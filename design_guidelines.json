@@ -1,0 +1,152 @@
+{
+  "theme": "Light",
+  "archetype": "Swiss & High-Contrast (Adapted for Minimalist App)",
+  "design_principles": [
+    "Content is King: The UI should be almost invisible, pure white, and high-contrast, letting the colorful collectibles stand out.",
+    "Minimal Colors: Strictly monochrome (Black, White, Greys) with Electric Yellow reserved exclusively for the 'Yellow Pecora' mascot, matches, and primary CTAs.",
+    "Negative Space: Generous padding (p-6 to p-12) to create a premium, uncrowded feeling for collectors.",
+    "Optical Alignment: Maintain crisp, sharp layouts with subtle 1px borders instead of heavy shadows."
+  ],
+  "colors": {
+    "background": {
+      "primary": "#FFFFFF",
+      "secondary": "#FAFAFA",
+      "tertiary": "#F3F4F6"
+    },
+    "text": {
+      "primary": "#0A0A0A",
+      "secondary": "#6B7280",
+      "inverse": "#FFFFFF",
+      "brand": "#EAB308"
+    },
+    "brand": {
+      "yellow_pecora": "#FDE047",
+      "yellow_pecora_dark": "#EAB308",
+      "action_black": "#000000"
+    },
+    "borders": {
+      "light": "#F3F4F6",
+      "default": "#E5E7EB",
+      "focus": "#0A0A0A"
+    }
+  },
+  "typography": {
+    "font_families": {
+      "headings": "Outfit, sans-serif",
+      "body": "Manrope, sans-serif"
+    },
+    "sizes": {
+      "h1": "text-4xl sm:text-5xl tracking-tight font-bold",
+      "h2": "text-2xl sm:text-3xl tracking-tight font-semibold",
+      "h3": "text-xl sm:text-2xl font-medium",
+      "body": "text-base leading-relaxed",
+      "small": "text-sm text-gray-500",
+      "badge": "text-xs font-bold uppercase tracking-wider"
+    }
+  },
+  "layout_and_spacing": {
+    "container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+    "section_padding": "py-12 md:py-20",
+    "card_radius": "rounded-xl",
+    "button_radius": "rounded-full",
+    "gap_system": {
+      "small": "gap-2",
+      "medium": "gap-6",
+      "large": "gap-12"
+    }
+  },
+  "components": {
+    "navbar": {
+      "style": "sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-gray-100",
+      "elements": [
+        "Logo testuale o SVG pulito",
+        "Barra di ricerca con icona lente (Search in lucide-react)",
+        "Pulsante 'Carica Oggetto' (Nero, testo bianco, pill-shaped)",
+        "Avatar profilo con Dropdown (Shadcn DropdownMenu)"
+      ]
+    },
+    "yellow_pecora_banner": {
+      "style": "bg-yellow-400 rounded-2xl p-8 sm:p-12 flex flex-col sm:flex-row items-center justify-between overflow-hidden relative",
+      "content": "Mostra 'Oggetto del Giorno' e 'Scambi Consigliati'. Usa font bold e colori ad alto contrasto (Nero su Giallo). Includi l'immagine della mascotte."
+    },
+    "item_card": {
+      "style": "group flex flex-col gap-3 cursor-pointer",
+      "image_container": "aspect-square rounded-xl overflow-hidden bg-gray-50 relative",
+      "image_style": "object-cover w-full h-full transition-transform duration-500 group-hover:scale-105",
+      "content": "Nome oggetto, Categoria/Tag (badge grigio), e Avatar del proprietario in basso."
+    },
+    "explore_sidebar": {
+      "style": "w-full md:w-64 flex-shrink-0 border-r border-gray-100 pr-6 hidden md:block",
+      "filters": "Checkboxes per Categoria, Sottocategoria, Tipo transazione (Scambio, Vendita). Su mobile, converte in un Drawer/Sheet."
+    },
+    "object_detail": {
+      "layout": "grid grid-cols-1 md:grid-cols-2 gap-12",
+      "gallery": "Immagine grande a sinistra, aspect-square, bg-gray-50 rounded-2xl object-cover",
+      "info_panel": "A destra. Badge 'Match Perfetto!' (bg-yellow-100 text-yellow-800) se applicabile. Titolo grande, tags, valore stimato.",
+      "ctas": "Pulsante primario 'Proponi Scambio' (Massiccio, bg-black text-white o bg-yellow-400 text-black). Pulsanti secondari 'Compra' e 'Salva/Desideri'."
+    },
+    "profile_tabs": {
+      "style": "Usa Shadcn Tabs. Header con grande Avatar, Nome, Livello Collezionista e icone Badge circolari.",
+      "tabs": "Collezioni Ufficiali (con progress bar %), Doppioni, Scambiabili, In Vendita, Lista Desideri"
+    },
+    "upload_modal": {
+      "style": "Usa Shadcn Dialog per il modale. Contenuto diviso in step per la simulazione AI.",
+      "drag_drop": "Area tratteggiata (border-dashed border-2 border-gray-200 rounded-2xl p-12 text-center).",
+      "ai_simulation": "Testo 'L\\'AI ha riconosciuto l\\'oggetto!'. Input fields pre-compilati in sola lettura (bg-gray-50 text-gray-500) per Nome, Categoria e Tag. Lascia editabili Condizione e Note."
+    }
+  },
+  "media": {
+    "images": {
+      "mascot": [
+        {
+          "category": "Mascot / Yellow Pecora Banner",
+          "url": "https://images.unsplash.com/photo-1751127659089-fb4cd1283965?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODR8MHwxfHNlYXJjaHwxfHxjdXRlJTIweWVsbG93JTIwc2hlZXAlMjB0b3l8ZW58MHx8fHwxNzc0NTQxNzE1fDA&ixlib=rb-4.1.0&q=85",
+          "description": "Yellow balloon dog serving as a playful yellow mascot proxy for the banner."
+        }
+      ],
+      "avatars": [
+        {
+          "category": "User Profile Avatar",
+          "url": "https://images.unsplash.com/photo-1639149888905-fb39731f2e6c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDF8MHwxfHNlYXJjaHwxfHxwZXJzb24lMjBhdmF0YXIlMjBwb3J0cmFpdHxlbnwwfHx8fDE3NzQ1NDE3MTZ8MA&ixlib=rb-4.1.0&q=85",
+          "description": "Young male collector avatar"
+        },
+        {
+          "category": "Collector Near You / Avatar",
+          "url": "https://images.unsplash.com/photo-1520283818086-3f6dffb019c0?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDF8MHwxfHNlYXJjaHwzfHxwZXJzb24lMjBhdmF0YXIlMjBwb3J0cmFpdHxlbnwwfHx8fDE3NzQ1NDE3MTZ8MA&ixlib=rb-4.1.0&q=85",
+          "description": "Female collector avatar"
+        }
+      ],
+      "items": [
+        {
+          "category": "Trading Card",
+          "url": "https://images.unsplash.com/photo-1613771404784-3a5686aa2be3?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODl8MHwxfHNlYXJjaHwzfHxwb2tlbW9uJTIwY2FyZHMlMjBjb2xsZWN0aW9ufGVufDB8fHx8MTc3NDU0MTcwNXww&ixlib=rb-4.1.0&q=85",
+          "description": "Pokemon Card collection for grid"
+        },
+        {
+          "category": "Trading Card 2",
+          "url": "https://images.unsplash.com/photo-1640271204756-6bf55641d9fe?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODl8MHwxfHNlYXJjaHw0fHxwb2tlbW9uJTIwY2FyZHMlMjBjb2xsZWN0aW9ufGVufDB8fHx8MTc3NDU0MTcwNXww&ixlib=rb-4.1.0&q=85",
+          "description": "Pile of Pokemon cards"
+        },
+        {
+          "category": "Lego Minifigure",
+          "url": "https://images.unsplash.com/photo-1644955133198-903b3ffb3f77?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTN8MHwxfHNlYXJjaHwyfHxsZWdvJTIwbWluaWZpZ3VyZXN8ZW58MHx8fHwxNzc0NTQxNzA3fDA&ixlib=rb-4.1.0&q=85",
+          "description": "Lego pieces and minifigs"
+        },
+        {
+          "category": "Funko Pop",
+          "url": "https://images.unsplash.com/photo-1643507646512-4de8e7aadf41?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MTJ8MHwxfHNlYXJjaHwxfHxmdW5rbyUyMHBvcCUyMGZpZ3VyZXN8ZW58MHx8fHwxNzc0NTQxNzA4fDA&ixlib=rb-4.1.0&q=85",
+          "description": "Funko pop vinyl figures"
+        }
+      ]
+    }
+  },
+  "technical_instructions": {
+    "framework": "React (JavaScript, .jsx files) with Tailwind CSS.",
+    "ui_library": "Shadcn UI (Tabs, Dialog, DropdownMenu, Button, Input, Badge).",
+    "icons": "lucide-react (Search, Upload, User, Star, Shield, ArrowRight).",
+    "testing": "All interactive elements MUST have data-testid attributes (e.g., data-testid='upload-button', data-testid='propose-trade-btn').",
+    "mock_data": "Generate a robust set of mock data in a dedicated file (e.g., src/data/mockData.js) containing Users, Items, Collections, and Tags to populate the components dynamically.",
+    "animations": "Use Tailwind CSS transitions for hovers and state changes. Focus on a lightweight, snappy feel.",
+    "mobile_first": "Ensure all grids collapse to 1 column on mobile. Use hidden/block classes to manage sidebars, ensuring the explore view is usable on small screens."
+  }
+}
