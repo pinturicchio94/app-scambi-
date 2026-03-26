@@ -1,0 +1,246 @@
+import { useState, useEffect } from "react";
+import { useParams, Link } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { ArrowLeftRight, ShoppingCart, Heart, ChevronLeft, Sparkles, Tag, Shield, Star } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import axios from "axios";
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+export default function ItemDetailPage() {
+  const { id } = useParams();
+  const { user } = useAuth();
+  const [item, setItem] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchItem = async () => {
+      try {
+        const res = await axios.get(`${API}/items/${id}`);
+        setItem(res.data);
+      } catch (err) {
+        console.error("Fetch item error:", err);
+      }
+      setLoading(false);
+    };
+    fetchItem();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+          <div className="aspect-square bg-gray-100 rounded-2xl animate-pulse" />
+          <div className="space-y-4">
+            <div className="h-8 bg-gray-100 rounded w-3/4 animate-pulse" />
+            <div className="h-4 bg-gray-50 rounded w-1/2 animate-pulse" />
+            <div className="h-20 bg-gray-50 rounded animate-pulse" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!item) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
+        <p className="text-gray-500">Oggetto non trovato</p>
+        <Link to="/esplora" className="text-sm text-gray-900 underline mt-2 inline-block">Torna a Esplora</Link>
+      </div>
+    );
+  }
+
+  const isSwap = item.transaction_type === "scambio";
+  const isOwnItem = user && user.user_id === item.owner_id;
+  // Simulate "Match Perfetto" if user is logged in and it's a swap item and not own item
+  const showMatch = user && isSwap && !isOwnItem;
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10" data-testid="item-detail-page">
+      {/* Breadcrumb */}
+      <Link to="/esplora" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition-colors mb-6" data-testid="back-to-explore">
+        <ChevronLeft className="w-4 h-4" /> Torna a Esplora
+      </Link>
+
+      {/* Match Banner */}
+      {showMatch && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6 flex items-center gap-3" data-testid="perfect-match-banner">
+          <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center flex-shrink-0">
+            <Sparkles className="w-5 h-5 text-yellow-700" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-yellow-900">Match Perfetto!</p>
+            <p className="text-xs text-yellow-800/70">Tu e {item.owner_name} avete oggetti compatibili per uno scambio.</p>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12">
+        {/* Left: Gallery */}
+        <div data-testid="item-gallery">
+          <div className="aspect-square bg-gray-50 rounded-2xl overflow-hidden border border-gray-100">
+            <img
+              src={item.images?.[0] || "https://via.placeholder.com/600"}
+              alt={item.name}
+              className="w-full h-full object-cover"
+            />
+          </div>
+          {/* Thumbnails (mock multiple) */}
+          <div className="flex gap-2 mt-3">
+            {(item.images || []).map((img, i) => (
+              <div
+                key={i}
+                className={`w-16 h-16 rounded-lg overflow-hidden border-2 cursor-pointer ${i === 0 ? "border-gray-900" : "border-gray-200"}`}
+              >
+                <img src={img} alt="" className="w-full h-full object-cover" />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Right: Info */}
+        <div className="space-y-6" data-testid="item-info">
+          {/* Category + Type */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant="secondary" className="text-[10px] bg-gray-100 text-gray-600 border-0">
+              {item.category}
+            </Badge>
+            {item.subcategory && (
+              <Badge variant="secondary" className="text-[10px] bg-gray-100 text-gray-600 border-0">
+                {item.subcategory}
+              </Badge>
+            )}
+            <Badge
+              className={`text-[10px] ${
+                isSwap
+                  ? "bg-yellow-100 text-yellow-800 border-yellow-200"
+                  : "bg-gray-100 text-gray-700 border-gray-200"
+              }`}
+            >
+              {isSwap ? "Scambio" : "Vendita"}
+            </Badge>
+          </div>
+
+          {/* Title */}
+          <h1 className="text-2xl sm:text-3xl font-heading font-bold text-gray-900" data-testid="item-name">
+            {item.name}
+          </h1>
+
+          {/* Tags */}
+          <div className="flex flex-wrap gap-1.5" data-testid="item-tags">
+            {item.tags?.map((tag) => (
+              <span key={tag} className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 px-2.5 py-1 rounded-full">
+                <Tag className="w-3 h-3" /> {tag}
+              </span>
+            ))}
+          </div>
+
+          {/* Details Grid */}
+          <div className="grid grid-cols-2 gap-4 py-4 border-y border-gray-100">
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Condizione</p>
+              <div className="flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-gray-500" />
+                <span className="text-sm font-medium text-gray-900">{item.condition}</span>
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Valore Medio</p>
+              <div className="flex items-center gap-1.5">
+                <Star className="w-3.5 h-3.5 text-gray-500" />
+                <span className="text-sm font-medium text-gray-900">
+                  {item.estimated_value ? `${item.estimated_value.toFixed(0)} EUR` : "N/D"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Description */}
+          {item.description && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">Descrizione</p>
+              <p className="text-sm text-gray-600 leading-relaxed">{item.description}</p>
+            </div>
+          )}
+
+          {/* Owner */}
+          <Link
+            to={`/profilo/${item.owner_id}`}
+            className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:border-gray-300 transition-colors"
+            data-testid="item-owner-link"
+          >
+            <img
+              src={item.owner_avatar || "https://via.placeholder.com/40"}
+              alt={item.owner_name}
+              className="w-10 h-10 rounded-full object-cover border border-gray-200"
+            />
+            <div>
+              <p className="text-sm font-medium text-gray-900">{item.owner_name}</p>
+              <p className="text-xs text-gray-500">Proprietario</p>
+            </div>
+          </Link>
+
+          {/* CTAs */}
+          <div className="space-y-3 pt-2">
+            {isSwap ? (
+              <>
+                <Button
+                  className="w-full rounded-full bg-gray-900 text-white hover:bg-gray-800 h-12 text-base font-medium"
+                  data-testid="propose-trade-btn"
+                  disabled={isOwnItem}
+                >
+                  <ArrowLeftRight className="w-5 h-5 mr-2" /> Proponi Scambio
+                </Button>
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    className="flex-1 rounded-full h-10"
+                    data-testid="buy-btn"
+                    disabled={isOwnItem}
+                  >
+                    <ShoppingCart className="w-4 h-4 mr-1.5" /> Compra
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 rounded-full h-10"
+                    data-testid="wishlist-btn"
+                  >
+                    <Heart className="w-4 h-4 mr-1.5" /> Desideri
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <Button
+                  className="w-full rounded-full bg-gray-900 text-white hover:bg-gray-800 h-12 text-base font-medium"
+                  data-testid="buy-btn"
+                  disabled={isOwnItem}
+                >
+                  <ShoppingCart className="w-5 h-5 mr-2" /> Compra - {item.estimated_value?.toFixed(0) || "N/D"} EUR
+                </Button>
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    className="flex-1 rounded-full h-10"
+                    data-testid="propose-trade-btn"
+                    disabled={isOwnItem}
+                  >
+                    <ArrowLeftRight className="w-4 h-4 mr-1.5" /> Proponi Scambio
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 rounded-full h-10"
+                    data-testid="wishlist-btn"
+                  >
+                    <Heart className="w-4 h-4 mr-1.5" /> Desideri
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

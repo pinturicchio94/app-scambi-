@@ -1,15 +1,16 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, UploadFile, File, Header, Query
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import uuid
+import requests
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List
-import uuid
-from datetime import datetime, timezone
-
+from typing import List, Optional
+from datetime import datetime, timezone, timedelta
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -19,54 +20,392 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Create the main app without a prefix
-app = FastAPI()
+# Object Storage
+STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
+EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+APP_NAME = "yellow-pecora"
+storage_key = None
 
-# Create a router with the /api prefix
+def init_storage():
+    global storage_key
+    if storage_key:
+        return storage_key
+    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
+    resp.raise_for_status()
+    storage_key = resp.json()["storage_key"]
+    return storage_key
+
+def put_object(path: str, data: bytes, content_type: str) -> dict:
+    key = init_storage()
+    resp = requests.put(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key, "Content-Type": content_type},
+        data=data, timeout=120
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+def get_object(path: str):
+    key = init_storage()
+    resp = requests.get(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key}, timeout=60
+    )
+    resp.raise_for_status()
+    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+
+app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+# --- Models ---
+class UserOut(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    user_id: str
+    email: str
+    name: str
+    picture: Optional[str] = None
+    level: Optional[str] = "Principiante"
+    badges: Optional[List[str]] = []
+    created_at: Optional[str] = None
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
+class ItemOut(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    item_id: str
+    name: str
+    category: str
+    subcategory: Optional[str] = None
+    tags: List[str] = []
+    condition: str = "Buono"
+    estimated_value: Optional[float] = None
+    transaction_type: str = "scambio"
+    description: Optional[str] = None
+    images: List[str] = []
+    owner_id: str
+    owner_name: Optional[str] = None
+    owner_avatar: Optional[str] = None
+    created_at: Optional[str] = None
 
-# Add your routes to the router instead of directly to app
+# --- Auth helpers ---
+async def get_current_user(request: Request) -> dict:
+    session_token = request.cookies.get("session_token")
+    if not session_token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            session_token = auth_header[7:]
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Non autenticato")
+    session = await db.user_sessions.find_one({"session_token": session_token}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=401, detail="Sessione non valida")
+    expires_at = session["expires_at"]
+    if isinstance(expires_at, str):
+        expires_at = datetime.fromisoformat(expires_at)
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=401, detail="Sessione scaduta")
+    user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=401, detail="Utente non trovato")
+    return user
+
+# --- Auth Endpoints ---
+@api_router.post("/auth/session")
+async def exchange_session(request: Request):
+    body = await request.json()
+    session_id = body.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id richiesto")
+    resp = requests.get(
+        "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
+        headers={"X-Session-ID": session_id}, timeout=15
+    )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Sessione OAuth non valida")
+    data = resp.json()
+    email = data["email"]
+    name = data.get("name", "")
+    picture = data.get("picture", "")
+    session_token = data["session_token"]
+    existing = await db.users.find_one({"email": email}, {"_id": 0})
+    if existing:
+        user_id = existing["user_id"]
+        await db.users.update_one({"email": email}, {"$set": {"name": name, "picture": picture}})
+    else:
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        await db.users.insert_one({
+            "user_id": user_id,
+            "email": email,
+            "name": name,
+            "picture": picture,
+            "level": "Principiante",
+            "badges": ["Prima collezione"],
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+    await db.user_sessions.delete_many({"user_id": user_id})
+    await db.user_sessions.insert_one({
+        "user_id": user_id,
+        "session_token": session_token,
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    response = JSONResponse(content=user)
+    response.set_cookie(
+        key="session_token", value=session_token,
+        httponly=True, secure=True, samesite="none",
+        path="/", max_age=7*24*3600
+    )
+    return response
+
+@api_router.get("/auth/me")
+async def get_me(request: Request):
+    user = await get_current_user(request)
+    return user
+
+@api_router.post("/auth/logout")
+async def logout(request: Request):
+    session_token = request.cookies.get("session_token")
+    if session_token:
+        await db.user_sessions.delete_many({"session_token": session_token})
+    response = JSONResponse(content={"message": "Logout effettuato"})
+    response.delete_cookie(key="session_token", path="/", samesite="none", secure=True)
+    return response
+
+# --- Items Endpoints ---
+@api_router.get("/items")
+async def get_items(
+    category: Optional[str] = None,
+    subcategory: Optional[str] = None,
+    transaction_type: Optional[str] = None,
+    search: Optional[str] = None,
+    sort: Optional[str] = "newest"
+):
+    query = {}
+    if category:
+        query["category"] = category
+    if subcategory:
+        query["subcategory"] = subcategory
+    if transaction_type:
+        query["transaction_type"] = transaction_type
+    if search:
+        query["$or"] = [
+            {"name": {"$regex": search, "$options": "i"}},
+            {"tags": {"$regex": search, "$options": "i"}},
+            {"category": {"$regex": search, "$options": "i"}}
+        ]
+    sort_order = -1 if sort == "newest" else 1
+    items = await db.items.find(query, {"_id": 0}).sort("created_at", sort_order).to_list(100)
+    return items
+
+@api_router.get("/items/{item_id}")
+async def get_item(item_id: str):
+    item = await db.items.find_one({"item_id": item_id}, {"_id": 0})
+    if not item:
+        raise HTTPException(status_code=404, detail="Oggetto non trovato")
+    return item
+
+@api_router.post("/items")
+async def create_item(request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    item_id = f"item_{uuid.uuid4().hex[:12]}"
+    item = {
+        "item_id": item_id,
+        "name": body.get("name", ""),
+        "category": body.get("category", ""),
+        "subcategory": body.get("subcategory", ""),
+        "tags": body.get("tags", []),
+        "condition": body.get("condition", "Buono"),
+        "estimated_value": body.get("estimated_value"),
+        "transaction_type": body.get("transaction_type", "scambio"),
+        "description": body.get("description", ""),
+        "images": body.get("images", []),
+        "owner_id": user["user_id"],
+        "owner_name": user.get("name", ""),
+        "owner_avatar": user.get("picture", ""),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.items.insert_one(item)
+    created = await db.items.find_one({"item_id": item_id}, {"_id": 0})
+    return created
+
+# --- Upload Endpoint ---
+@api_router.post("/upload")
+async def upload_file(request: Request, file: UploadFile = File(...)):
+    user = await get_current_user(request)
+    ext = file.filename.split(".")[-1] if "." in file.filename else "bin"
+    path = f"{APP_NAME}/uploads/{user['user_id']}/{uuid.uuid4()}.{ext}"
+    data = await file.read()
+    result = put_object(path, data, file.content_type or "application/octet-stream")
+    await db.files.insert_one({
+        "file_id": str(uuid.uuid4()),
+        "storage_path": result["path"],
+        "original_filename": file.filename,
+        "content_type": file.content_type,
+        "size": result.get("size", len(data)),
+        "owner_id": user["user_id"],
+        "is_deleted": False,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    return {"path": result["path"], "url": f"/api/files/{result['path']}"}
+
+@api_router.get("/files/{path:path}")
+async def serve_file(path: str, auth: Optional[str] = Query(None)):
+    record = await db.files.find_one({"storage_path": path, "is_deleted": False}, {"_id": 0})
+    if not record:
+        raise HTTPException(status_code=404, detail="File non trovato")
+    data, content_type = get_object(path)
+    return Response(content=data, media_type=record.get("content_type", content_type))
+
+# --- User Profile ---
+@api_router.get("/users/{user_id}")
+async def get_user_profile(user_id: str):
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Utente non trovato")
+    items = await db.items.find({"owner_id": user_id}, {"_id": 0}).to_list(100)
+    return {**user, "items": items}
+
+# --- Seed Mock Data ---
+@api_router.post("/seed")
+async def seed_data():
+    existing = await db.items.count_documents({})
+    if existing > 0:
+        return {"message": "Dati gia presenti", "count": existing}
+
+    mock_users = [
+        {"user_id": "user_mock_001", "email": "marco@example.com", "name": "Marco Rossi",
+         "picture": "https://images.unsplash.com/photo-1639149888905-fb39731f2e6c?w=200&h=200&fit=crop",
+         "level": "Collezionista Esperto", "badges": ["Prima collezione", "10 scambi", "Super Trader"],
+         "created_at": datetime.now(timezone.utc).isoformat()},
+        {"user_id": "user_mock_002", "email": "giulia@example.com", "name": "Giulia Bianchi",
+         "picture": "https://images.unsplash.com/photo-1520283818086-3f6dffb019c0?w=200&h=200&fit=crop",
+         "level": "Collezionista Intermedio", "badges": ["Prima collezione", "5 scambi"],
+         "created_at": datetime.now(timezone.utc).isoformat()},
+        {"user_id": "user_mock_003", "email": "luca@example.com", "name": "Luca Verdi",
+         "picture": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop",
+         "level": "Principiante", "badges": ["Prima collezione"],
+         "created_at": datetime.now(timezone.utc).isoformat()},
+    ]
+
+    mock_items = [
+        {"item_id": "item_mock_001", "name": "Charizard Holo 1a Edizione", "category": "Carte",
+         "subcategory": "Pokemon", "tags": ["raro", "holo", "1a edizione", "base set"],
+         "condition": "Eccellente", "estimated_value": 450.0, "transaction_type": "scambio",
+         "description": "Charizard holografico dalla prima edizione del set base. Condizioni eccellenti, bordi perfetti.",
+         "images": ["https://images.unsplash.com/photo-1613771404784-3a5686aa2be3?w=600&h=600&fit=crop"],
+         "owner_id": "user_mock_001", "owner_name": "Marco Rossi",
+         "owner_avatar": "https://images.unsplash.com/photo-1639149888905-fb39731f2e6c?w=200&h=200&fit=crop",
+         "created_at": "2025-12-01T10:00:00+00:00"},
+        {"item_id": "item_mock_002", "name": "Pikachu VMAX Rainbow", "category": "Carte",
+         "subcategory": "Pokemon", "tags": ["vmax", "rainbow", "raro"],
+         "condition": "Nuovo", "estimated_value": 120.0, "transaction_type": "scambio",
+         "description": "Pikachu VMAX versione Rainbow Secret Rare. Appena aperta dalla busta.",
+         "images": ["https://images.unsplash.com/photo-1640271204756-6bf55641d9fe?w=600&h=600&fit=crop"],
+         "owner_id": "user_mock_002", "owner_name": "Giulia Bianchi",
+         "owner_avatar": "https://images.unsplash.com/photo-1520283818086-3f6dffb019c0?w=200&h=200&fit=crop",
+         "created_at": "2025-12-02T14:30:00+00:00"},
+        {"item_id": "item_mock_003", "name": "LEGO Star Wars Millennium Falcon", "category": "LEGO",
+         "subcategory": "Star Wars", "tags": ["star wars", "millennium falcon", "set completo"],
+         "condition": "Buono", "estimated_value": 350.0, "transaction_type": "scambio",
+         "description": "Set LEGO #75257 Millennium Falcon completo con minifigure. Scatola inclusa.",
+         "images": ["https://images.unsplash.com/photo-1644955133198-903b3ffb3f77?w=600&h=600&fit=crop"],
+         "owner_id": "user_mock_001", "owner_name": "Marco Rossi",
+         "owner_avatar": "https://images.unsplash.com/photo-1639149888905-fb39731f2e6c?w=200&h=200&fit=crop",
+         "created_at": "2025-12-03T09:15:00+00:00"},
+        {"item_id": "item_mock_004", "name": "Funko Pop Darth Vader #01", "category": "Funko Pop",
+         "subcategory": "Star Wars", "tags": ["star wars", "darth vader", "classico"],
+         "condition": "Nuovo", "estimated_value": 85.0, "transaction_type": "vendita",
+         "description": "Funko Pop #01 Darth Vader originale. Scatola in condizioni perfette.",
+         "images": ["https://images.unsplash.com/photo-1643507646512-4de8e7aadf41?w=600&h=600&fit=crop"],
+         "owner_id": "user_mock_003", "owner_name": "Luca Verdi",
+         "owner_avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop",
+         "created_at": "2025-12-04T16:45:00+00:00"},
+        {"item_id": "item_mock_005", "name": "Magic The Gathering Black Lotus", "category": "Carte",
+         "subcategory": "Magic", "tags": ["mtg", "black lotus", "alpha", "leggendario"],
+         "condition": "Buono", "estimated_value": 5000.0, "transaction_type": "scambio",
+         "description": "Black Lotus Alpha edition. Pezzo da collezione unico.",
+         "images": ["https://images.unsplash.com/photo-1613771404784-3a5686aa2be3?w=600&h=600&fit=crop"],
+         "owner_id": "user_mock_002", "owner_name": "Giulia Bianchi",
+         "owner_avatar": "https://images.unsplash.com/photo-1520283818086-3f6dffb019c0?w=200&h=200&fit=crop",
+         "created_at": "2025-12-05T11:20:00+00:00"},
+        {"item_id": "item_mock_006", "name": "LEGO Technic Lamborghini", "category": "LEGO",
+         "subcategory": "Technic", "tags": ["technic", "lamborghini", "supercar"],
+         "condition": "Nuovo", "estimated_value": 280.0, "transaction_type": "vendita",
+         "description": "LEGO Technic Lamborghini Sian FKP 37 completo. Mai aperto.",
+         "images": ["https://images.unsplash.com/photo-1644955133198-903b3ffb3f77?w=600&h=600&fit=crop"],
+         "owner_id": "user_mock_003", "owner_name": "Luca Verdi",
+         "owner_avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop",
+         "created_at": "2025-12-06T08:00:00+00:00"},
+        {"item_id": "item_mock_007", "name": "Funko Pop Spider-Man #03", "category": "Funko Pop",
+         "subcategory": "Marvel", "tags": ["marvel", "spider-man", "limited edition"],
+         "condition": "Eccellente", "estimated_value": 65.0, "transaction_type": "scambio",
+         "description": "Funko Pop Spider-Man edizione limitata. Pezzo ricercato.",
+         "images": ["https://images.unsplash.com/photo-1643507646512-4de8e7aadf41?w=600&h=600&fit=crop"],
+         "owner_id": "user_mock_001", "owner_name": "Marco Rossi",
+         "owner_avatar": "https://images.unsplash.com/photo-1639149888905-fb39731f2e6c?w=200&h=200&fit=crop",
+         "created_at": "2025-12-07T13:30:00+00:00"},
+        {"item_id": "item_mock_008", "name": "Yu-Gi-Oh Blue Eyes White Dragon", "category": "Carte",
+         "subcategory": "Yu-Gi-Oh", "tags": ["yu-gi-oh", "drago bianco", "ultra raro"],
+         "condition": "Buono", "estimated_value": 200.0, "transaction_type": "scambio",
+         "description": "Blue Eyes White Dragon Ultra Rara. Carta iconica in buone condizioni.",
+         "images": ["https://images.unsplash.com/photo-1640271204756-6bf55641d9fe?w=600&h=600&fit=crop"],
+         "owner_id": "user_mock_002", "owner_name": "Giulia Bianchi",
+         "owner_avatar": "https://images.unsplash.com/photo-1520283818086-3f6dffb019c0?w=200&h=200&fit=crop",
+         "created_at": "2025-12-08T10:00:00+00:00"},
+        {"item_id": "item_mock_009", "name": "LEGO Harry Potter Hogwarts", "category": "LEGO",
+         "subcategory": "Harry Potter", "tags": ["harry potter", "hogwarts", "castello"],
+         "condition": "Eccellente", "estimated_value": 420.0, "transaction_type": "scambio",
+         "description": "Set LEGO Castello di Hogwarts completo. Un capolavoro per collezionisti.",
+         "images": ["https://images.unsplash.com/photo-1644955133198-903b3ffb3f77?w=600&h=600&fit=crop"],
+         "owner_id": "user_mock_001", "owner_name": "Marco Rossi",
+         "owner_avatar": "https://images.unsplash.com/photo-1639149888905-fb39731f2e6c?w=200&h=200&fit=crop",
+         "created_at": "2025-12-09T15:00:00+00:00"},
+        {"item_id": "item_mock_010", "name": "Funko Pop Batman #01 Blue Box", "category": "Funko Pop",
+         "subcategory": "DC Comics", "tags": ["dc", "batman", "blue box", "raro"],
+         "condition": "Buono", "estimated_value": 150.0, "transaction_type": "vendita",
+         "description": "Funko Pop Batman Blue Box originale. Pezzo raro per collezionisti.",
+         "images": ["https://images.unsplash.com/photo-1643507646512-4de8e7aadf41?w=600&h=600&fit=crop"],
+         "owner_id": "user_mock_003", "owner_name": "Luca Verdi",
+         "owner_avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop",
+         "created_at": "2025-12-10T12:00:00+00:00"},
+        {"item_id": "item_mock_011", "name": "Set Completo Base Pokemon 1999", "category": "Carte",
+         "subcategory": "Pokemon", "tags": ["pokemon", "set completo", "base set", "1999"],
+         "condition": "Buono", "estimated_value": 2500.0, "transaction_type": "scambio",
+         "description": "Set base completo di 102 carte Pokemon originali del 1999.",
+         "images": ["https://images.unsplash.com/photo-1613771404784-3a5686aa2be3?w=600&h=600&fit=crop"],
+         "owner_id": "user_mock_002", "owner_name": "Giulia Bianchi",
+         "owner_avatar": "https://images.unsplash.com/photo-1520283818086-3f6dffb019c0?w=200&h=200&fit=crop",
+         "created_at": "2025-12-11T09:00:00+00:00"},
+        {"item_id": "item_mock_012", "name": "LEGO Creator Expert Fiat 500", "category": "LEGO",
+         "subcategory": "Creator Expert", "tags": ["fiat 500", "creator expert", "vintage"],
+         "condition": "Nuovo", "estimated_value": 90.0, "transaction_type": "vendita",
+         "description": "LEGO Creator Expert Fiat 500 in giallo. Set nuovo sigillato.",
+         "images": ["https://images.unsplash.com/photo-1644955133198-903b3ffb3f77?w=600&h=600&fit=crop"],
+         "owner_id": "user_mock_001", "owner_name": "Marco Rossi",
+         "owner_avatar": "https://images.unsplash.com/photo-1639149888905-fb39731f2e6c?w=200&h=200&fit=crop",
+         "created_at": "2025-12-12T14:00:00+00:00"},
+    ]
+
+    for u in mock_users:
+        existing_u = await db.users.find_one({"user_id": u["user_id"]})
+        if not existing_u:
+            await db.users.insert_one(u)
+
+    for item in mock_items:
+        await db.items.insert_one(item)
+
+    return {"message": "Dati mock caricati", "items": len(mock_items), "users": len(mock_users)}
+
 @api_router.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"message": "Yellow Pecora API"}
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
-
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
-
-# Include the router in the main app
 app.include_router(api_router)
 
 app.add_middleware(
@@ -77,12 +416,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+@app.on_event("startup")
+async def startup():
+    try:
+        init_storage()
+        logger.info("Storage inizializzato")
+    except Exception as e:
+        logger.error(f"Storage init fallito: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
