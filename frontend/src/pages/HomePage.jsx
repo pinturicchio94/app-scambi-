@@ -129,11 +129,16 @@ export default function HomePage() {
               </div>
             )}
           </div>
-          {/* Mascot */}
-          <div className="flex-shrink-0 w-40 h-40 sm:w-52 sm:h-52 relative flex items-center justify-center">
-            <YellowPecoraMascot className="w-36 h-36 sm:w-44 sm:h-44 drop-shadow-lg" />
-            <div className="absolute -bottom-2 -right-2 bg-white rounded-full px-3 py-1 shadow-md">
-              <span className="text-xs font-bold text-yellow-700">Yellow Pecora</span>
+          {/* Daily item image + Mascot */}
+          <div className="flex-shrink-0 flex flex-col items-center gap-3">
+            {dailyItem?.images?.[0] && (
+              <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-2xl overflow-hidden border-4 border-yellow-300 shadow-lg">
+                <img src={dailyItem.images[0]} alt={dailyItem?.name} className="w-full h-full object-cover" />
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <YellowPecoraMascot className="w-10 h-10 drop-shadow" />
+              <span className="text-xs font-bold text-yellow-700 bg-white rounded-full px-2.5 py-1 shadow-sm">Yellow Pecora</span>
             </div>
           </div>
           {/* Background pattern */}

@@ -8,6 +8,7 @@ import logging
 import uuid
 import base64
 import json
+import hashlib
 import requests
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
@@ -179,6 +180,215 @@ async def logout(request: Request):
     response.delete_cookie(key="session_token", path="/", samesite="none", secure=True)
     return response
 
+# --- Email/Password Auth ---
+@api_router.post("/auth/register")
+async def register_email(request: Request):
+    body = await request.json()
+    email = body.get("email", "").strip().lower()
+    password = body.get("password", "")
+    name = body.get("name", "")
+    if not email or not password or not name:
+        raise HTTPException(status_code=400, detail="Email, password e nome richiesti")
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email gia registrata")
+    pw_hash = hashlib.sha256(password.encode()).hexdigest()
+    user_id = f"user_{uuid.uuid4().hex[:12]}"
+    session_token = f"sess_{uuid.uuid4().hex}"
+    await db.users.insert_one({
+        "user_id": user_id, "email": email, "name": name,
+        "password_hash": pw_hash, "picture": "",
+        "level": "Principiante", "badges": ["Prima collezione"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    await db.user_sessions.insert_one({
+        "user_id": user_id, "session_token": session_token,
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    response = JSONResponse(content=user)
+    response.set_cookie(key="session_token", value=session_token, httponly=True, secure=True, samesite="none", path="/", max_age=7*24*3600)
+    return response
+
+@api_router.post("/auth/login-email")
+async def login_email(request: Request):
+    body = await request.json()
+    email = body.get("email", "").strip().lower()
+    password = body.get("password", "")
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email e password richiesti")
+    pw_hash = hashlib.sha256(password.encode()).hexdigest()
+    user = await db.users.find_one({"email": email, "password_hash": pw_hash})
+    if not user:
+        raise HTTPException(status_code=401, detail="Email o password non validi")
+    user_id = user["user_id"]
+    session_token = f"sess_{uuid.uuid4().hex}"
+    await db.user_sessions.delete_many({"user_id": user_id})
+    await db.user_sessions.insert_one({
+        "user_id": user_id, "session_token": session_token,
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    user_data = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    response = JSONResponse(content=user_data)
+    response.set_cookie(key="session_token", value=session_token, httponly=True, secure=True, samesite="none", path="/", max_age=7*24*3600)
+    return response
+
+# --- Trade Proposals ---
+@api_router.post("/trades")
+async def create_trade_proposal(request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    target_item_id = body.get("target_item_id")
+    offered_item_ids = body.get("offered_item_ids", [])
+    money_offer = body.get("money_offer", 0)
+    message = body.get("message", "")
+    if not target_item_id or (not offered_item_ids and not money_offer):
+        raise HTTPException(status_code=400, detail="Devi offrire almeno un oggetto o un importo")
+    target_item = await db.items.find_one({"item_id": target_item_id}, {"_id": 0})
+    if not target_item:
+        raise HTTPException(status_code=404, detail="Oggetto non trovato")
+    if target_item["owner_id"] == user["user_id"]:
+        raise HTTPException(status_code=400, detail="Non puoi scambiare con te stesso")
+    offered_items = []
+    for oid in offered_item_ids:
+        oi = await db.items.find_one({"item_id": oid, "owner_id": user["user_id"]}, {"_id": 0})
+        if oi:
+            offered_items.append({"item_id": oi["item_id"], "name": oi["name"], "images": oi.get("images", [])})
+    trade_id = f"trade_{uuid.uuid4().hex[:12]}"
+    trade = {
+        "trade_id": trade_id,
+        "proposer_id": user["user_id"],
+        "proposer_name": user.get("name", ""),
+        "proposer_avatar": user.get("picture", ""),
+        "receiver_id": target_item["owner_id"],
+        "receiver_name": target_item.get("owner_name", ""),
+        "target_item": {"item_id": target_item["item_id"], "name": target_item["name"], "images": target_item.get("images", [])},
+        "offered_items": offered_items,
+        "money_offer": money_offer,
+        "message": message,
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.trades.insert_one(trade)
+    # Notify receiver
+    await db.notifications.insert_one({
+        "notification_id": f"notif_{uuid.uuid4().hex[:12]}",
+        "user_id": target_item["owner_id"],
+        "type": "trade_proposal",
+        "title": "Nuova proposta di scambio!",
+        "message": f'{user.get("name", "Qualcuno")} vuole scambiare con il tuo "{target_item["name"]}"' + (f" + {money_offer} EUR" if money_offer else ""),
+        "link": f"/oggetto/{target_item_id}",
+        "read": False,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    created = await db.trades.find_one({"trade_id": trade_id}, {"_id": 0})
+    return created
+
+@api_router.get("/trades")
+async def get_my_trades(request: Request):
+    user = await get_current_user(request)
+    uid = user["user_id"]
+    trades = await db.trades.find(
+        {"$or": [{"proposer_id": uid}, {"receiver_id": uid}]}, {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    return trades
+
+@api_router.put("/trades/{trade_id}")
+async def update_trade(request: Request, trade_id: str):
+    user = await get_current_user(request)
+    body = await request.json()
+    new_status = body.get("status")
+    if new_status not in ("accepted", "rejected"):
+        raise HTTPException(status_code=400, detail="Status non valido")
+    trade = await db.trades.find_one({"trade_id": trade_id}, {"_id": 0})
+    if not trade:
+        raise HTTPException(status_code=404, detail="Proposta non trovata")
+    if trade["receiver_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Solo il destinatario puo accettare/rifiutare")
+    await db.trades.update_one({"trade_id": trade_id}, {"$set": {"status": new_status}})
+    # Notify proposer
+    status_label = "accettata" if new_status == "accepted" else "rifiutata"
+    await db.notifications.insert_one({
+        "notification_id": f"notif_{uuid.uuid4().hex[:12]}",
+        "user_id": trade["proposer_id"],
+        "type": "trade_response",
+        "title": f"Proposta {status_label}!",
+        "message": f'{user.get("name", "")} ha {status_label} la tua proposta per "{trade["target_item"]["name"]}".',
+        "link": f"/oggetto/{trade['target_item']['item_id']}",
+        "read": False,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    updated = await db.trades.find_one({"trade_id": trade_id}, {"_id": 0})
+    return updated
+
+# --- Chat/Messages ---
+@api_router.post("/chat")
+async def send_chat_message(request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    recipient_id = body.get("recipient_id")
+    text = body.get("text", "")
+    item_id = body.get("item_id", "")
+    if not recipient_id or not text:
+        raise HTTPException(status_code=400, detail="recipient_id e text richiesti")
+    chat_key = "_".join(sorted([user["user_id"], recipient_id]))
+    msg = {
+        "message_id": f"msg_{uuid.uuid4().hex[:12]}",
+        "chat_key": chat_key,
+        "sender_id": user["user_id"],
+        "sender_name": user.get("name", ""),
+        "sender_avatar": user.get("picture", ""),
+        "recipient_id": recipient_id,
+        "text": text,
+        "item_id": item_id,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.messages.insert_one(msg)
+    return await db.messages.find_one({"message_id": msg["message_id"]}, {"_id": 0})
+
+@api_router.get("/chat/{other_user_id}")
+async def get_chat_messages(request: Request, other_user_id: str):
+    user = await get_current_user(request)
+    chat_key = "_".join(sorted([user["user_id"], other_user_id]))
+    messages = await db.messages.find({"chat_key": chat_key}, {"_id": 0}).sort("created_at", 1).to_list(200)
+    return messages
+
+@api_router.get("/chats")
+async def get_my_chats(request: Request):
+    user = await get_current_user(request)
+    uid = user["user_id"]
+    pipeline = [
+        {"$match": {"$or": [{"sender_id": uid}, {"recipient_id": uid}]}},
+        {"$sort": {"created_at": -1}},
+        {"$group": {
+            "_id": "$chat_key",
+            "last_message": {"$first": "$text"},
+            "last_time": {"$first": "$created_at"},
+            "sender_id": {"$first": "$sender_id"},
+            "sender_name": {"$first": "$sender_name"},
+            "sender_avatar": {"$first": "$sender_avatar"},
+            "recipient_id": {"$first": "$recipient_id"},
+            "item_id": {"$first": "$item_id"}
+        }},
+        {"$sort": {"last_time": -1}},
+        {"$limit": 30}
+    ]
+    chats = await db.messages.aggregate(pipeline).to_list(30)
+    result = []
+    for c in chats:
+        other_id = c["recipient_id"] if c["sender_id"] == uid else c["sender_id"]
+        other_user = await db.users.find_one({"user_id": other_id}, {"_id": 0, "password_hash": 0})
+        result.append({
+            "chat_key": c["_id"],
+            "other_user": other_user,
+            "last_message": c["last_message"],
+            "last_time": c["last_time"],
+            "item_id": c.get("item_id", "")
+        })
+    return result
+
 # --- Items Endpoints ---
 @api_router.get("/items")
 async def get_items(
@@ -199,11 +409,39 @@ async def get_items(
         query["$or"] = [
             {"name": {"$regex": search, "$options": "i"}},
             {"tags": {"$regex": search, "$options": "i"}},
-            {"category": {"$regex": search, "$options": "i"}}
+            {"category": {"$regex": search, "$options": "i"}},
+            {"subcategory": {"$regex": search, "$options": "i"}}
         ]
-    sort_order = -1 if sort == "newest" else 1
-    items = await db.items.find(query, {"_id": 0}).sort("created_at", sort_order).to_list(100)
+    # Sorting options
+    if sort == "price_asc":
+        sort_field, sort_order = "estimated_value", 1
+    elif sort == "price_desc":
+        sort_field, sort_order = "estimated_value", -1
+    elif sort == "oldest":
+        sort_field, sort_order = "created_at", 1
+    elif sort == "value":
+        sort_field, sort_order = "estimated_value", -1
+    else:
+        sort_field, sort_order = "created_at", -1
+    items = await db.items.find(query, {"_id": 0}).sort(sort_field, sort_order).to_list(100)
     return items
+
+# --- Search Suggestions ---
+@api_router.get("/search/suggestions")
+async def search_suggestions(q: str = ""):
+    if len(q) < 2:
+        return []
+    pipeline = [
+        {"$match": {"$or": [
+            {"name": {"$regex": q, "$options": "i"}},
+            {"tags": {"$regex": q, "$options": "i"}},
+            {"subcategory": {"$regex": q, "$options": "i"}}
+        ]}},
+        {"$project": {"_id": 0, "item_id": 1, "name": 1, "category": 1, "subcategory": 1, "images": {"$slice": ["$images", 1]}}},
+        {"$limit": 8}
+    ]
+    results = await db.items.aggregate(pipeline).to_list(8)
+    return results
 
 @api_router.get("/items/{item_id}")
 async def get_item(item_id: str):

@@ -343,9 +343,131 @@ class YellowPecoraAPITester:
         
         return success
 
+    def test_email_auth_register(self):
+        """Test email/password registration"""
+        timestamp = int(datetime.now().timestamp())
+        register_data = {
+            "email": f"test{timestamp}@example.com",
+            "password": "testpass123",
+            "name": "Test User Email"
+        }
+        success, response = self.run_test("Email Registration", "POST", "auth/register", 200, data=register_data)
+        if success and response.get('user_id'):
+            print(f"   ✅ User registered with ID: {response['user_id']}")
+            # Store for login test
+            self.test_email = register_data['email']
+            self.test_password = register_data['password']
+        return success
+
+    def test_email_auth_login(self):
+        """Test email/password login"""
+        if not hasattr(self, 'test_email'):
+            print("❌ No test email available - run registration first")
+            return False
+        
+        login_data = {
+            "email": self.test_email,
+            "password": self.test_password
+        }
+        success, response = self.run_test("Email Login", "POST", "auth/login-email", 200, data=login_data)
+        if success and response.get('user_id'):
+            print(f"   ✅ User logged in with ID: {response['user_id']}")
+        return success
+
+    def test_search_suggestions(self):
+        """Test search autocomplete suggestions"""
+        success1, response1 = self.run_test("Search Suggestions - funko", "GET", "search/suggestions?q=funko", 200)
+        success2, response2 = self.run_test("Search Suggestions - pokemon", "GET", "search/suggestions?q=pokemon", 200)
+        success3, response3 = self.run_test("Search Suggestions - short query", "GET", "search/suggestions?q=a", 200)
+        
+        if success1 and isinstance(response1, list):
+            print(f"   ✅ Funko suggestions returned {len(response1)} items")
+        if success2 and isinstance(response2, list):
+            print(f"   ✅ Pokemon suggestions returned {len(response2)} items")
+        if success3 and isinstance(response3, list):
+            print(f"   ✅ Short query returned {len(response3)} items")
+            
+        return success1 and success2 and success3
+
+    def test_items_sorting(self):
+        """Test items sorting functionality"""
+        success1, response1 = self.run_test("Items Sort - Price Desc", "GET", "items?sort=price_desc", 200)
+        success2, response2 = self.run_test("Items Sort - Price Asc", "GET", "items?sort=price_asc", 200)
+        success3, response3 = self.run_test("Items Sort - Newest", "GET", "items?sort=newest", 200)
+        success4, response4 = self.run_test("Items Sort - Oldest", "GET", "items?sort=oldest", 200)
+        success5, response5 = self.run_test("Items Sort - Most Valuable", "GET", "items?sort=value", 200)
+        
+        # Check if sorting actually works by comparing first items
+        if success1 and success2 and len(response1) > 0 and len(response2) > 0:
+            first_desc = response1[0].get('estimated_value') or 0
+            first_asc = response2[0].get('estimated_value') or 0
+            if first_desc >= first_asc:
+                print(f"   ✅ Price sorting works: desc={first_desc}, asc={first_asc}")
+            else:
+                print(f"   ⚠️  Price sorting may not work correctly: desc={first_desc}, asc={first_asc}")
+        
+        return success1 and success2 and success3 and success4 and success5
+
+    def test_trade_proposals(self):
+        """Test trade proposal system"""
+        if not self.session_token:
+            print("❌ No session token available for authenticated test")
+            return False
+        
+        # Create a trade proposal
+        trade_data = {
+            "target_item_id": "item_mock_001",
+            "offered_item_ids": [],
+            "money_offer": 50.0,
+            "message": "Test trade proposal"
+        }
+        success1, response1 = self.run_test("Create Trade Proposal", "POST", "trades", 200, data=trade_data)
+        
+        # Get user's trades
+        success2, response2 = self.run_test("Get My Trades", "GET", "trades", 200)
+        
+        trade_id = None
+        if success1 and response1.get('trade_id'):
+            trade_id = response1['trade_id']
+            print(f"   ✅ Trade created with ID: {trade_id}")
+        
+        # Test trade update (accept/reject) - this would normally be done by the receiver
+        success3 = True  # Skip this as we can't easily test without multiple users
+        
+        return success1 and success2 and success3
+
+    def test_chat_system(self):
+        """Test chat messaging system"""
+        if not self.session_token:
+            print("❌ No session token available for authenticated test")
+            return False
+        
+        # Send a chat message
+        chat_data = {
+            "recipient_id": "user_mock_001",
+            "text": "Test message from API test",
+            "item_id": "item_mock_001"
+        }
+        success1, response1 = self.run_test("Send Chat Message", "POST", "chat", 200, data=chat_data)
+        
+        # Get chat messages
+        success2, response2 = self.run_test("Get Chat Messages", "GET", "chat/user_mock_001", 200)
+        
+        # Get chat list
+        success3, response3 = self.run_test("Get Chat List", "GET", "chats", 200)
+        
+        if success1 and response1.get('message_id'):
+            print(f"   ✅ Message sent with ID: {response1['message_id']}")
+        if success2 and isinstance(response2, list):
+            print(f"   ✅ Chat messages returned {len(response2)} messages")
+        if success3 and isinstance(response3, list):
+            print(f"   ✅ Chat list returned {len(response3)} chats")
+        
+        return success1 and success2 and success3
+
 def main():
-    print("🐑 Yellow Pecora API Testing Suite")
-    print("=" * 50)
+    print("🐑 Yellow Pecora API Testing Suite - NEW FEATURES FOCUS")
+    print("=" * 60)
     
     tester = YellowPecoraAPITester()
     
@@ -366,6 +488,16 @@ def main():
     tester.test_get_user_profile()
     tester.test_get_nonexistent_user()
     
+    # Test NEW FEATURES - Email Auth
+    print("\n🆕 EMAIL AUTHENTICATION TESTS")
+    tester.test_email_auth_register()
+    tester.test_email_auth_login()
+    
+    # Test NEW FEATURES - Search & Sorting
+    print("\n🔍 SEARCH & SORTING TESTS")
+    tester.test_search_suggestions()
+    tester.test_items_sorting()
+    
     # Test auth endpoints
     print("\n🔐 AUTH API TESTS")
     tester.test_auth_me_unauthenticated()
@@ -376,8 +508,13 @@ def main():
         tester.test_create_item_authenticated()
         tester.test_create_item_unauthenticated()
         
-        # Test new features
-        print("\n🆕 NEW FEATURES API TESTS")
+        # Test NEW FEATURES - Trade & Chat Systems
+        print("\n💬 TRADE & CHAT SYSTEM TESTS")
+        tester.test_trade_proposals()
+        tester.test_chat_system()
+        
+        # Test existing features
+        print("\n📦 EXISTING FEATURES TESTS")
         tester.test_create_item_with_desired_trade()
         tester.test_item_with_collection_data()
         tester.test_collections_endpoints()
@@ -396,7 +533,7 @@ def main():
     
     # Print results
     print(f"\n📊 TEST RESULTS")
-    print("=" * 50)
+    print("=" * 60)
     print(f"Tests run: {tester.tests_run}")
     print(f"Tests passed: {tester.tests_passed}")
     print(f"Success rate: {(tester.tests_passed/tester.tests_run*100):.1f}%")

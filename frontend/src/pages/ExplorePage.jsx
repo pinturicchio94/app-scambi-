@@ -2,10 +2,11 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import ItemCard from "@/components/ItemCard";
 import { CATEGORIES, TRANSACTION_TYPES } from "@/data/mockData";
-import { Filter, X, SlidersHorizontal } from "lucide-react";
+import { Filter, X, SlidersHorizontal, ArrowUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from "@/components/ui/sheet";
 import axios from "axios";
 
@@ -105,6 +106,7 @@ export default function ExplorePage() {
   const [searchParams] = useSearchParams();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [sortBy, setSortBy] = useState("newest");
   const [filters, setFilters] = useState({
     category: "",
     subcategory: "",
@@ -123,13 +125,13 @@ export default function ExplorePage() {
       try {
         const params = new URLSearchParams();
         if (filters.search) params.set("search", filters.search);
-        // Map category id to label for backend
         if (filters.category) {
           const cat = CATEGORIES.find((c) => c.id === filters.category);
           if (cat) params.set("category", cat.label);
         }
         if (filters.subcategory) params.set("subcategory", filters.subcategory);
         if (filters.transaction_type) params.set("transaction_type", filters.transaction_type);
+        params.set("sort", sortBy);
         const res = await axios.get(`${API}/items?${params.toString()}`);
         setItems(res.data);
       } catch (err) {
@@ -138,14 +140,14 @@ export default function ExplorePage() {
       setLoading(false);
     };
     fetchItems();
-  }, [filters]);
+  }, [filters, sortBy]);
 
   const activeFilterCount = [filters.category, filters.subcategory, filters.transaction_type].filter(Boolean).length;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10" data-testid="explore-page">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-3">
         <div>
           <h1 className="text-2xl sm:text-3xl font-heading font-semibold text-gray-900">Esplora</h1>
           {filters.search && (
@@ -155,27 +157,44 @@ export default function ExplorePage() {
           )}
         </div>
 
-        {/* Mobile Filter Toggle */}
-        <Sheet>
-          <SheetTrigger asChild>
-            <Button variant="outline" className="md:hidden rounded-full text-sm" data-testid="mobile-filter-toggle">
-              <SlidersHorizontal className="w-4 h-4 mr-1.5" />
-              Filtri
-              {activeFilterCount > 0 && (
-                <Badge className="ml-1.5 bg-gray-900 text-white text-[10px] px-1.5">{activeFilterCount}</Badge>
-              )}
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-[280px]">
-            <SheetHeader>
-              <SheetTitle>Filtri</SheetTitle>
-              <SheetDescription>Filtra gli oggetti per categoria e tipo.</SheetDescription>
-            </SheetHeader>
-            <div className="mt-6">
-              <FilterSidebar filters={filters} setFilters={setFilters} />
-            </div>
-          </SheetContent>
-        </Sheet>
+        <div className="flex items-center gap-2">
+          {/* Sort */}
+          <Select value={sortBy} onValueChange={setSortBy}>
+            <SelectTrigger className="w-[170px] rounded-full text-xs h-9 border-gray-200" data-testid="sort-select">
+              <ArrowUpDown className="w-3.5 h-3.5 mr-1.5 text-gray-400" />
+              <SelectValue placeholder="Ordina" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Ultimi caricamenti</SelectItem>
+              <SelectItem value="oldest">Meno recenti</SelectItem>
+              <SelectItem value="price_asc">Prezzo crescente</SelectItem>
+              <SelectItem value="price_desc">Prezzo decrescente</SelectItem>
+              <SelectItem value="value">Piu pregiati</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Mobile Filter Toggle */}
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="outline" className="md:hidden rounded-full text-xs h-9" data-testid="mobile-filter-toggle">
+                <SlidersHorizontal className="w-3.5 h-3.5 mr-1" />
+                Filtri
+                {activeFilterCount > 0 && (
+                  <Badge className="ml-1 bg-gray-900 text-white text-[9px] px-1.5">{activeFilterCount}</Badge>
+                )}
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-[280px]">
+              <SheetHeader>
+                <SheetTitle>Filtri</SheetTitle>
+                <SheetDescription>Filtra gli oggetti per categoria e tipo.</SheetDescription>
+              </SheetHeader>
+              <div className="mt-6">
+                <FilterSidebar filters={filters} setFilters={setFilters} />
+              </div>
+            </SheetContent>
+          </Sheet>
+        </div>
       </div>
 
       {/* Active Filter Tags */}

@@ -4,6 +4,8 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import AuthCallback from "@/components/AuthCallback";
 import Navbar from "@/components/Navbar";
 import UploadModal from "@/components/UploadModal";
+import LoginModal from "@/components/LoginModal";
+import ChatDrawer from "@/components/ChatDrawer";
 import HomePage from "@/pages/HomePage";
 import ExplorePage from "@/pages/ExplorePage";
 import ItemDetailPage from "@/pages/ItemDetailPage";
@@ -15,8 +17,10 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 function AppRouter() {
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
 
   const fetchNotifications = useCallback(async () => {
@@ -48,6 +52,9 @@ function AppRouter() {
     <>
       <Navbar
         onUploadClick={() => setUploadOpen(true)}
+        onLoginClick={() => setLoginOpen(true)}
+        onChatClick={() => setChatOpen(true)}
+        onLogout={logout}
         notifications={notifications}
         onNotificationsClear={clearNotifications}
       />
@@ -60,6 +67,8 @@ function AppRouter() {
         </Routes>
       </main>
       <UploadModal open={uploadOpen} onOpenChange={setUploadOpen} onItemCreated={fetchNotifications} />
+      <LoginModal open={loginOpen} onOpenChange={setLoginOpen} />
+      <ChatDrawer open={chatOpen} onOpenChange={setChatOpen} />
 
       {/* Footer */}
       <footer className="border-t border-gray-100 py-8 mt-12">
