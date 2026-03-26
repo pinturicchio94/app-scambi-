@@ -6,11 +6,14 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import uuid
+import base64
+import json
 import requests
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
+from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -225,6 +228,7 @@ async def create_item(request: Request):
         "transaction_type": body.get("transaction_type", "scambio"),
         "description": body.get("description", ""),
         "images": body.get("images", []),
+        "desired_trade_for": body.get("desired_trade_for", ""),
         "owner_id": user["user_id"],
         "owner_name": user.get("name", ""),
         "owner_avatar": user.get("picture", ""),
@@ -261,6 +265,102 @@ async def serve_file(path: str, auth: Optional[str] = Query(None)):
         raise HTTPException(status_code=404, detail="File non trovato")
     data, content_type = get_object(path)
     return Response(content=data, media_type=record.get("content_type", content_type))
+
+# --- AI Recognition Endpoint ---
+@api_router.post("/recognize")
+async def recognize_item(request: Request):
+    await get_current_user(request)  # Auth check
+    body = await request.json()
+    image_base64 = body.get("image_base64")
+    if not image_base64:
+        raise HTTPException(status_code=400, detail="image_base64 richiesto")
+    try:
+        chat = LlmChat(
+            api_key=EMERGENT_KEY,
+            session_id=f"recognize_{uuid.uuid4().hex[:8]}",
+            system_message="""Sei un esperto di oggetti da collezione. Analizza l'immagine fornita e identifica l'oggetto.
+Rispondi SOLO con un JSON valido (senza markdown, senza ```), con questa struttura esatta:
+{
+  "name": "nome dell'oggetto identificato",
+  "category": "una tra: Carte, Funko Pop, LEGO, Vintage, Manga & Anime",
+  "subcategory": "sottocategoria specifica (es. Pokemon, Star Wars, Marvel, ecc.)",
+  "tags": ["tag1", "tag2", "tag3", "tag4"],
+  "estimated_value": 0,
+  "condition_hint": "stima della condizione visiva: Nuovo, Eccellente, Buono, Discreto, Da restaurare",
+  "description": "breve descrizione dell'oggetto"
+}
+Se non riesci a identificare l'oggetto, prova comunque a dare una stima ragionevole basata su quello che vedi."""
+        ).with_model("openai", "gpt-4o")
+
+        image_content = ImageContent(image_base64=image_base64)
+        user_msg = UserMessage(
+            text="Identifica questo oggetto da collezione e fornisci tutte le informazioni possibili.",
+            file_contents=[image_content]
+        )
+        response_text = await chat.send_message(user_msg)
+        # Parse JSON from response
+        cleaned = response_text.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+            cleaned = cleaned.rsplit("```", 1)[0]
+        result = json.loads(cleaned)
+        return result
+    except json.JSONDecodeError:
+        logger.error(f"AI response not valid JSON: {response_text[:200]}")
+        return {
+            "name": "Oggetto non identificato",
+            "category": "Carte",
+            "subcategory": "",
+            "tags": ["da verificare"],
+            "estimated_value": 0,
+            "condition_hint": "Buono",
+            "description": response_text[:200] if response_text else "L'AI non ha potuto identificare l'oggetto."
+        }
+    except Exception as e:
+        logger.error(f"AI recognition error: {e}")
+        return {
+            "name": "Oggetto non identificato",
+            "category": "Carte",
+            "subcategory": "",
+            "tags": ["da verificare"],
+            "estimated_value": 0,
+            "condition_hint": "Buono",
+            "description": "Errore nel riconoscimento. Compila i campi manualmente."
+        }
+
+# --- Wishlist Endpoints ---
+@api_router.post("/wishlist/add")
+async def add_to_wishlist(request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    item_id = body.get("item_id")
+    if not item_id:
+        raise HTTPException(status_code=400, detail="item_id richiesto")
+    existing = await db.wishlist.find_one({"user_id": user["user_id"], "item_id": item_id})
+    if existing:
+        return {"message": "Gia nella lista desideri"}
+    await db.wishlist.insert_one({
+        "user_id": user["user_id"],
+        "item_id": item_id,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    return {"message": "Aggiunto alla lista desideri"}
+
+@api_router.delete("/wishlist/{item_id}")
+async def remove_from_wishlist(request: Request, item_id: str):
+    user = await get_current_user(request)
+    await db.wishlist.delete_one({"user_id": user["user_id"], "item_id": item_id})
+    return {"message": "Rimosso dalla lista desideri"}
+
+@api_router.get("/wishlist")
+async def get_wishlist(request: Request):
+    user = await get_current_user(request)
+    wishlist_items = await db.wishlist.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(100)
+    item_ids = [w["item_id"] for w in wishlist_items]
+    if not item_ids:
+        return []
+    items = await db.items.find({"item_id": {"$in": item_ids}}, {"_id": 0}).to_list(100)
+    return items
 
 # --- User Profile ---
 @api_router.get("/users/{user_id}")

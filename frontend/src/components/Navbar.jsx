@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { Search, Plus, User, LogOut, Package, Heart } from "lucide-react";
+import YellowPecoraMascot from "@/components/YellowPecoraMascot";
+import { Search, Plus, User, LogOut, Package, Heart, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -25,12 +26,23 @@ export default function Navbar({ onUploadClick }) {
     <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-gray-100" data-testid="navbar">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-4">
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 flex-shrink-0" data-testid="navbar-logo">
-            <span className="text-xl font-heading font-bold tracking-tight text-gray-900">
-              Yellow<span className="text-yellow-500">Pecora</span>
-            </span>
-          </Link>
+          {/* Logo + Home */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Link to="/" className="flex items-center gap-2" data-testid="navbar-logo">
+              <YellowPecoraMascot className="w-8 h-8" />
+              <span className="text-xl font-heading font-bold tracking-tight text-gray-900 hidden sm:inline">
+                Yellow<span className="text-yellow-500">Pecora</span>
+              </span>
+            </Link>
+            <Link
+              to="/"
+              className="ml-1 p-2 rounded-full hover:bg-gray-100 transition-colors"
+              data-testid="home-button"
+              title="Torna alla Home"
+            >
+              <Home className="w-4 h-4 text-gray-500" />
+            </Link>
+          </div>
 
           {/* Search Bar */}
           <form onSubmit={handleSearch} className="hidden sm:flex flex-1 max-w-md">

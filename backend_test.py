@@ -28,6 +28,8 @@ class YellowPecoraAPITester:
                 response = requests.get(url, headers=test_headers, timeout=10)
             elif method == 'POST':
                 response = requests.post(url, json=data, headers=test_headers, timeout=10)
+            elif method == 'DELETE':
+                response = requests.delete(url, headers=test_headers, timeout=10)
 
             success = response.status_code == expected_status
             if success:
@@ -186,6 +188,79 @@ class YellowPecoraAPITester:
         self.session_token = temp_token
         return success
 
+    def test_create_item_with_desired_trade(self):
+        """Test creating an item with desired_trade_for field"""
+        if not self.session_token:
+            print("❌ No session token available for authenticated test")
+            return False
+        
+        item_data = {
+            "name": "Test Trade Item",
+            "category": "Carte",
+            "subcategory": "Pokemon",
+            "tags": ["test", "trade"],
+            "condition": "Buono",
+            "transaction_type": "scambio",
+            "description": "Test item with desired trade",
+            "desired_trade_for": "Pikachu VMAX or any rare Pokemon card",
+            "images": []
+        }
+        success, response = self.run_test("Create Item with Desired Trade", "POST", "items", 201, data=item_data)
+        if success and response.get('desired_trade_for'):
+            print(f"   ✅ desired_trade_for field saved: {response['desired_trade_for']}")
+        return success
+
+    def test_ai_recognize_unauthenticated(self):
+        """Test AI recognition endpoint without authentication"""
+        return self.run_test("AI Recognize - Unauthenticated", "POST", "recognize", 401, 
+                           data={"image_base64": "fake_base64_data"})
+
+    def test_ai_recognize_authenticated(self):
+        """Test AI recognition endpoint with authentication"""
+        if not self.session_token:
+            print("❌ No session token available for authenticated test")
+            return False
+        
+        # Use a minimal base64 image data (1x1 pixel PNG)
+        minimal_png_base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jU77mgAAAABJRU5ErkJggg=="
+        
+        return self.run_test("AI Recognize - Authenticated", "POST", "recognize", 200,
+                           data={"image_base64": minimal_png_base64})
+
+    def test_wishlist_add_unauthenticated(self):
+        """Test adding to wishlist without authentication"""
+        return self.run_test("Wishlist Add - Unauthenticated", "POST", "wishlist/add", 401,
+                           data={"item_id": "item_mock_001"})
+
+    def test_wishlist_add_authenticated(self):
+        """Test adding to wishlist with authentication"""
+        if not self.session_token:
+            print("❌ No session token available for authenticated test")
+            return False
+        
+        return self.run_test("Wishlist Add - Authenticated", "POST", "wishlist/add", 200,
+                           data={"item_id": "item_mock_001"})
+
+    def test_wishlist_get_authenticated(self):
+        """Test getting wishlist with authentication"""
+        if not self.session_token:
+            print("❌ No session token available for authenticated test")
+            return False
+        
+        return self.run_test("Get Wishlist - Authenticated", "GET", "wishlist", 200)
+
+    def test_wishlist_remove_authenticated(self):
+        """Test removing from wishlist with authentication"""
+        if not self.session_token:
+            print("❌ No session token available for authenticated test")
+            return False
+        
+        # First add an item to wishlist, then remove it
+        self.run_test("Wishlist Add for Remove Test", "POST", "wishlist/add", 200,
+                     data={"item_id": "item_mock_002"})
+        
+        return self.run_test("Wishlist Remove - Authenticated", "DELETE", "wishlist/item_mock_002", 200)
+
 def main():
     print("🐑 Yellow Pecora API Testing Suite")
     print("=" * 50)
@@ -218,6 +293,19 @@ def main():
         tester.test_auth_me_authenticated()
         tester.test_create_item_authenticated()
         tester.test_create_item_unauthenticated()
+        
+        # Test new features
+        print("\n🆕 NEW FEATURES API TESTS")
+        tester.test_create_item_with_desired_trade()
+        tester.test_ai_recognize_authenticated()
+        tester.test_wishlist_add_authenticated()
+        tester.test_wishlist_get_authenticated()
+        tester.test_wishlist_remove_authenticated()
+        
+        # Test unauthenticated access to protected endpoints
+        print("\n🔒 PROTECTED ENDPOINTS TESTS")
+        tester.test_ai_recognize_unauthenticated()
+        tester.test_wishlist_add_unauthenticated()
     else:
         print("⚠️  Skipping authenticated tests - could not create test session")
     

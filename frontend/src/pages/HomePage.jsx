@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import ItemCard from "@/components/ItemCard";
+import YellowPecoraMascot from "@/components/YellowPecoraMascot";
 import { MOCK_USERS } from "@/data/mockData";
 import { ArrowRight, Sparkles, ArrowLeftRight, MapPin, TrendingUp, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -128,13 +129,9 @@ export default function HomePage() {
               </div>
             )}
           </div>
-          {/* Mascot image */}
-          <div className="flex-shrink-0 w-40 h-40 sm:w-52 sm:h-52 relative">
-            <img
-              src="https://images.unsplash.com/photo-1751127659089-fb4cd1283965?w=400&h=400&fit=crop"
-              alt="Yellow Pecora Mascot"
-              className="w-full h-full object-cover rounded-2xl shadow-lg"
-            />
+          {/* Mascot */}
+          <div className="flex-shrink-0 w-40 h-40 sm:w-52 sm:h-52 relative flex items-center justify-center">
+            <YellowPecoraMascot className="w-36 h-36 sm:w-44 sm:h-44 drop-shadow-lg" />
             <div className="absolute -bottom-2 -right-2 bg-white rounded-full px-3 py-1 shadow-md">
               <span className="text-xs font-bold text-yellow-700">Yellow Pecora</span>
             </div>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { ArrowLeftRight, ShoppingCart, Heart, ChevronLeft, Sparkles, Tag, Shield, Star } from "lucide-react";
+import { ArrowLeftRight, ShoppingCart, Heart, ChevronLeft, Sparkles, Tag, Shield, Star, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import axios from "axios";
@@ -13,6 +13,8 @@ export default function ItemDetailPage() {
   const { user } = useAuth();
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [wishlisted, setWishlisted] = useState(false);
+  const [wishlistLoading, setWishlistLoading] = useState(false);
 
   useEffect(() => {
     const fetchItem = async () => {
@@ -164,6 +166,17 @@ export default function ItemDetailPage() {
             </div>
           )}
 
+          {/* Desired Trade */}
+          {item.desired_trade_for && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4" data-testid="desired-trade-info">
+              <div className="flex items-center gap-2 mb-1">
+                <Target className="w-4 h-4 text-yellow-700" />
+                <span className="text-xs font-semibold text-yellow-800 uppercase tracking-wider">Scambio desiderato</span>
+              </div>
+              <p className="text-sm text-yellow-900">{item.desired_trade_for}</p>
+            </div>
+          )}
+
           {/* Owner */}
           <Link
             to={`/profilo/${item.owner_id}`}
@@ -203,10 +216,25 @@ export default function ItemDetailPage() {
                   </Button>
                   <Button
                     variant="outline"
-                    className="flex-1 rounded-full h-10"
+                    className={`flex-1 rounded-full h-10 ${wishlisted ? "bg-red-50 border-red-200 text-red-600 hover:bg-red-100" : ""}`}
                     data-testid="wishlist-btn"
+                    onClick={async () => {
+                      if (!user || wishlistLoading) return;
+                      setWishlistLoading(true);
+                      try {
+                        if (wishlisted) {
+                          await axios.delete(`${API}/wishlist/${item.item_id}`, { withCredentials: true });
+                          setWishlisted(false);
+                        } else {
+                          await axios.post(`${API}/wishlist/add`, { item_id: item.item_id }, { withCredentials: true });
+                          setWishlisted(true);
+                        }
+                      } catch {}
+                      setWishlistLoading(false);
+                    }}
                   >
-                    <Heart className="w-4 h-4 mr-1.5" /> Desideri
+                    <Heart className={`w-4 h-4 mr-1.5 ${wishlisted ? "fill-current" : ""}`} />
+                    {wishlisted ? "Aggiunto" : "Desideri"}
                   </Button>
                 </div>
               </>
@@ -230,10 +258,25 @@ export default function ItemDetailPage() {
                   </Button>
                   <Button
                     variant="outline"
-                    className="flex-1 rounded-full h-10"
+                    className={`flex-1 rounded-full h-10 ${wishlisted ? "bg-red-50 border-red-200 text-red-600 hover:bg-red-100" : ""}`}
                     data-testid="wishlist-btn"
+                    onClick={async () => {
+                      if (!user || wishlistLoading) return;
+                      setWishlistLoading(true);
+                      try {
+                        if (wishlisted) {
+                          await axios.delete(`${API}/wishlist/${item.item_id}`, { withCredentials: true });
+                          setWishlisted(false);
+                        } else {
+                          await axios.post(`${API}/wishlist/add`, { item_id: item.item_id }, { withCredentials: true });
+                          setWishlisted(true);
+                        }
+                      } catch {}
+                      setWishlistLoading(false);
+                    }}
                   >
-                    <Heart className="w-4 h-4 mr-1.5" /> Desideri
+                    <Heart className={`w-4 h-4 mr-1.5 ${wishlisted ? "fill-current" : ""}`} />
+                    {wishlisted ? "Aggiunto" : "Desideri"}
                   </Button>
                 </div>
               </>
