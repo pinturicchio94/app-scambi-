@@ -1,7 +1,7 @@
-# Yellow Pecora - PRD
+# FUN COLLECTION (Yellow Pecora) - PRD
 
 ## Problem Statement
-Web app marketplace/social per collezionisti, stile Vinted/Subito, focalizzata sullo SCAMBIO. Interfaccia italiana, mobile-first, accessibile in max 3 click.
+Web app marketplace/social per collezionisti, stile Vinted/Subito, focalizzata sullo SCAMBIO. Interfaccia italiana, mobile-first, accessibile in max 3 click. Titolo sito: "FUN COLLECTION".
 
 ## Architecture
 - **Frontend**: React + Tailwind CSS + Shadcn UI
@@ -10,48 +10,44 @@ Web app marketplace/social per collezionisti, stile Vinted/Subito, focalizzata s
 - **Storage**: Emergent Object Storage
 - **AI**: OpenAI GPT-4o Vision (riconoscimento oggetti)
 - **Fonts**: Outfit (headings) + Manrope (body)
+- **Theme**: Chiaro, minimalista, giallo solo per Yellow Pecora
 
 ## User Personas
 1. Collezionista esperto - scambia pezzi rari, cerca match specifici
 2. Collezionista principiante - esplora, cerca ispirazione
 3. Venditore - vuole monetizzare la propria collezione
 
-## Core Requirements
-- Struttura dati: Utente -> Collezioni -> Oggetti -> Tag
-- CRUD oggetti con upload foto multiple
-- Riconoscimento AI dell'oggetto da foto
-- Sistema wishlist
-- Filtri per categoria, sottocategoria, tipo transazione
-- Profilo con tab (Collezioni, Doppioni, Scambiabili, In Vendita, Desideri)
-- Mascotte Yellow Pecora come identita' del brand
-
 ## What's Been Implemented (2026-03-26)
-- [x] Homepage con Yellow Pecora banner, caroselli (Nuovi Arrivi, Trending, Collezionisti vicini)
-- [x] Pagina Esplora con sidebar filtri e griglia card
-- [x] Pagina Dettaglio Oggetto con galleria, info, CTA
+- [x] Titolo "FUN COLLECTION" centrato in alto
+- [x] Mascotte Yellow Pecora SVG custom
+- [x] Tasto Home nella navbar
+- [x] Homepage con banner mascotte + caroselli
+- [x] Pagina Esplora con filtri sidebar (7 categorie, 60+ sottocategorie)
+- [x] Pagina Dettaglio Oggetto con galleria + info + CTA
 - [x] Profilo Utente con tab e badge
-- [x] Modale Carica Oggetto a 3 step con AI recognition reale (GPT-4o)
-- [x] Upload multiplo foto (max 6)
-- [x] Campi editabili dopo riconoscimento AI
-- [x] Campo "Scambio desiderato" per specificare cosa si cerca
-- [x] Pulsante wishlist rapido su card e pagina dettaglio
-- [x] Tasto Home nella navbar con mascotte SVG
-- [x] Mascotte Yellow Pecora SVG animata
-- [x] Autenticazione Google OAuth (Emergent)
+- [x] Upload multi-foto (max 6) con drag & drop
+- [x] AI Recognition reale (GPT-4o Vision) con campi editabili
+- [x] Sottocategoria "Altra serie..." per input personalizzato
+- [x] Sistema collezioni con % completamento (auto + manuale)
+- [x] Match Perfetto - notifiche quando qualcuno carica un oggetto dalla tua wishlist
+- [x] Conteggio persone che cercano l'oggetto caricato
+- [x] Campanella notifiche nella navbar
+- [x] Scambio desiderato (specifica cosa vuoi in cambio)
+- [x] Wishlist veloce con cuore su ogni card
+- [x] Auth Google OAuth (Emergent)
 - [x] Object Storage per upload reali
-- [x] Mock data (12 oggetti, 3 utenti)
 
 ## Prioritized Backlog
 ### P0
-- [ ] Messaggistica interna tra utenti per negoziare scambi
-- [ ] Notifiche per match e proposte di scambio
+- [ ] Messaggistica interna tra utenti
+- [ ] Flow completo proposta scambio (accept/reject)
 
 ### P1
-- [ ] Sistema di valutazione utenti (feedback dopo scambio)
-- [ ] Gestione completa delle proposte di scambio (accept/reject flow)
-- [ ] Collezioni officiali con catalogo completo
+- [ ] Sistema valutazione utenti post-scambio
+- [ ] Geolocalizzazione reale
+- [ ] Notifiche push browser
 
 ### P2
-- [ ] Geolocalizzazione reale per "collezionisti vicino a te"
 - [ ] Cronologia scambi
 - [ ] Multi-lingua
+- [ ] Statistiche collezione avanzate
