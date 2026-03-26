@@ -1,9 +1,11 @@
 export const CATEGORIES = [
-  { id: "carte", label: "Carte", subcategories: ["Pokemon", "Magic", "Yu-Gi-Oh", "Panini"] },
-  { id: "funko", label: "Funko Pop", subcategories: ["Star Wars", "Marvel", "DC Comics", "Anime"] },
-  { id: "lego", label: "LEGO", subcategories: ["Star Wars", "Technic", "Creator Expert", "Harry Potter"] },
-  { id: "vintage", label: "Vintage", subcategories: ["Giocattoli", "Poster", "Vinili", "Monete"] },
-  { id: "manga", label: "Manga & Anime", subcategories: ["Figure", "Manga", "Artbook", "Limited"] },
+  { id: "carte", label: "Carte", subcategories: ["Pokemon", "Magic", "Yu-Gi-Oh", "Panini", "Dragon Ball", "One Piece", "Digimon", "Baseball", "Calcio", "Basketball"] },
+  { id: "funko", label: "Funko Pop", subcategories: ["Star Wars", "Marvel", "DC Comics", "Anime", "One Piece", "Dragon Ball", "Harry Potter", "Disney", "Game of Thrones", "Naruto", "My Hero Academia"] },
+  { id: "lego", label: "LEGO", subcategories: ["Star Wars", "Technic", "Creator Expert", "Harry Potter", "Marvel", "City", "Ninjago", "Architecture", "Ideas", "Speed Champions"] },
+  { id: "vintage", label: "Vintage", subcategories: ["Giocattoli", "Poster", "Vinili", "Monete", "Francobolli", "Orologi", "Libri Antichi", "Militaria"] },
+  { id: "manga", label: "Manga & Anime", subcategories: ["Figure", "Manga", "Artbook", "Limited", "One Piece", "Naruto", "Dragon Ball", "Attack on Titan", "Demon Slayer", "Jujutsu Kaisen"] },
+  { id: "videogiochi", label: "Videogiochi", subcategories: ["Nintendo", "PlayStation", "Xbox", "Retro", "Game Boy", "PC", "Collector Edition"] },
+  { id: "modellismo", label: "Modellismo", subcategories: ["Auto", "Aerei", "Treni", "Navi", "Gundam", "Warhammer"] },
 ];
 
 export const CONDITIONS = ["Nuovo", "Eccellente", "Buono", "Discreto", "Da restaurare"];

@@ -229,13 +229,101 @@ async def create_item(request: Request):
         "description": body.get("description", ""),
         "images": body.get("images", []),
         "desired_trade_for": body.get("desired_trade_for", ""),
+        "collection_name": body.get("collection_name", ""),
+        "collection_percentage": body.get("collection_percentage"),
         "owner_id": user["user_id"],
         "owner_name": user.get("name", ""),
         "owner_avatar": user.get("picture", ""),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.items.insert_one(item)
+
+    # Auto-catalog into collection if collection_name provided
+    coll_name = body.get("collection_name", "")
+    coll_pct = body.get("collection_percentage")
+    if coll_name:
+        existing_coll = await db.collections.find_one(
+            {"owner_id": user["user_id"], "name": coll_name}, {"_id": 0}
+        )
+        if existing_coll:
+            new_count = existing_coll.get("owned", 0) + 1
+            update_data = {"owned": new_count}
+            if coll_pct is not None:
+                update_data["percentage"] = coll_pct
+            elif existing_coll.get("total", 0) > 0:
+                update_data["percentage"] = round((new_count / existing_coll["total"]) * 100)
+            await db.collections.update_one(
+                {"owner_id": user["user_id"], "name": coll_name},
+                {"$set": update_data}
+            )
+        else:
+            await db.collections.insert_one({
+                "collection_id": f"coll_{uuid.uuid4().hex[:12]}",
+                "owner_id": user["user_id"],
+                "name": coll_name,
+                "category": body.get("category", ""),
+                "subcategory": body.get("subcategory", ""),
+                "total": 0,
+                "owned": 1,
+                "percentage": coll_pct if coll_pct is not None else 0,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+
+    # Match system: check if this item is on anyone's wishlist
+    item_name_lower = item["name"].lower()
+    item_tags = [t.lower() for t in item.get("tags", [])]
+    search_terms = [item_name_lower] + item_tags + [item.get("category", "").lower(), item.get("subcategory", "").lower()]
+    search_terms = [t for t in search_terms if t]
+
+    # Find wishlist items that might match
+    all_wishlists = await db.wishlist.find({}, {"_id": 0}).to_list(500)
+    seekers_count = 0
+    for wl in all_wishlists:
+        if wl["user_id"] == user["user_id"]:
+            continue
+        wl_item = await db.items.find_one({"item_id": wl["item_id"]}, {"_id": 0})
+        if not wl_item:
+            continue
+        wl_tags = [t.lower() for t in wl_item.get("tags", [])]
+        wl_name = wl_item.get("name", "").lower()
+        overlap = set(search_terms) & set([wl_name] + wl_tags + [wl_item.get("category", "").lower()])
+        if overlap:
+            seekers_count += 1
+            # Notify the wishlist owner
+            await db.notifications.insert_one({
+                "notification_id": f"notif_{uuid.uuid4().hex[:12]}",
+                "user_id": wl["user_id"],
+                "type": "match_perfetto",
+                "title": "Match Perfetto!",
+                "message": f'{user.get("name", "Qualcuno")} ha caricato "{item["name"]}" che e\' nella tua lista desideri!',
+                "link": f"/oggetto/{item_id}",
+                "read": False,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+
+    # Also check desired_trade_for of existing items (reverse match)
+    if item.get("desired_trade_for"):
+        desired_lower = item["desired_trade_for"].lower()
+        potential = await db.items.find({}, {"_id": 0, "item_id": 1, "name": 1, "owner_id": 1, "tags": 1}).to_list(500)
+        for p in potential:
+            if p["owner_id"] == user["user_id"]:
+                continue
+            p_name_lower = p.get("name", "").lower()
+            p_tags = [t.lower() for t in p.get("tags", [])]
+            if desired_lower in p_name_lower or any(desired_lower in t for t in p_tags):
+                await db.notifications.insert_one({
+                    "notification_id": f"notif_{uuid.uuid4().hex[:12]}",
+                    "user_id": p["owner_id"],
+                    "type": "match_scambio",
+                    "title": "Qualcuno cerca il tuo oggetto!",
+                    "message": f'{user.get("name", "Qualcuno")} vuole scambiare "{item["name"]}" e cerca "{item["desired_trade_for"]}".',
+                    "link": f"/oggetto/{item_id}",
+                    "read": False,
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                })
+
     created = await db.items.find_one({"item_id": item_id}, {"_id": 0})
+    created["seekers_count"] = seekers_count
     return created
 
 # --- Upload Endpoint ---
@@ -362,6 +450,105 @@ async def get_wishlist(request: Request):
     items = await db.items.find({"item_id": {"$in": item_ids}}, {"_id": 0}).to_list(100)
     return items
 
+# --- Notification Endpoints ---
+@api_router.get("/notifications")
+async def get_notifications(request: Request):
+    user = await get_current_user(request)
+    notifications = await db.notifications.find(
+        {"user_id": user["user_id"]}, {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    return notifications
+
+@api_router.post("/notifications/read-all")
+async def mark_notifications_read(request: Request):
+    user = await get_current_user(request)
+    await db.notifications.update_many(
+        {"user_id": user["user_id"], "read": False},
+        {"$set": {"read": True}}
+    )
+    return {"message": "Tutte le notifiche segnate come lette"}
+
+# --- Collection Endpoints ---
+@api_router.get("/collections/{user_id}")
+async def get_user_collections(user_id: str):
+    collections = await db.collections.find(
+        {"owner_id": user_id}, {"_id": 0}
+    ).to_list(100)
+    return collections
+
+@api_router.post("/collections")
+async def create_collection(request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    coll_name = body.get("name", "")
+    if not coll_name:
+        raise HTTPException(status_code=400, detail="Nome collezione richiesto")
+    existing = await db.collections.find_one(
+        {"owner_id": user["user_id"], "name": coll_name}
+    )
+    if existing:
+        raise HTTPException(status_code=400, detail="Collezione gia esistente")
+    coll = {
+        "collection_id": f"coll_{uuid.uuid4().hex[:12]}",
+        "owner_id": user["user_id"],
+        "name": coll_name,
+        "category": body.get("category", ""),
+        "subcategory": body.get("subcategory", ""),
+        "total": body.get("total", 0),
+        "owned": body.get("owned", 0),
+        "percentage": body.get("percentage", 0),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.collections.insert_one(coll)
+    created = await db.collections.find_one({"collection_id": coll["collection_id"]}, {"_id": 0})
+    return created
+
+@api_router.put("/collections/{collection_id}")
+async def update_collection(request: Request, collection_id: str):
+    user = await get_current_user(request)
+    body = await request.json()
+    coll = await db.collections.find_one(
+        {"collection_id": collection_id, "owner_id": user["user_id"]}
+    )
+    if not coll:
+        raise HTTPException(status_code=404, detail="Collezione non trovata")
+    update_data = {}
+    if "percentage" in body:
+        update_data["percentage"] = body["percentage"]
+    if "total" in body:
+        update_data["total"] = body["total"]
+    if "owned" in body:
+        update_data["owned"] = body["owned"]
+    if "name" in body:
+        update_data["name"] = body["name"]
+    if update_data:
+        await db.collections.update_one(
+            {"collection_id": collection_id},
+            {"$set": update_data}
+        )
+    updated = await db.collections.find_one({"collection_id": collection_id}, {"_id": 0})
+    return updated
+
+# --- Match/Seekers Count Endpoint ---
+@api_router.get("/items/{item_id}/seekers")
+async def get_seekers_count(item_id: str):
+    item = await db.items.find_one({"item_id": item_id}, {"_id": 0})
+    if not item:
+        raise HTTPException(status_code=404, detail="Oggetto non trovato")
+    item_name_lower = item["name"].lower()
+    item_tags = [t.lower() for t in item.get("tags", [])]
+    search_terms = set([item_name_lower] + item_tags)
+    all_wishlists = await db.wishlist.find({}, {"_id": 0}).to_list(500)
+    count = 0
+    for wl in all_wishlists:
+        wl_item = await db.items.find_one({"item_id": wl["item_id"]}, {"_id": 0})
+        if not wl_item:
+            continue
+        wl_tags = set([t.lower() for t in wl_item.get("tags", [])] + [wl_item.get("name", "").lower()])
+        if search_terms & wl_tags:
+            count += 1
+    return {"seekers_count": count}
+
 # --- User Profile ---
 @api_router.get("/users/{user_id}")
 async def get_user_profile(user_id: str):
@@ -369,7 +556,8 @@ async def get_user_profile(user_id: str):
     if not user:
         raise HTTPException(status_code=404, detail="Utente non trovato")
     items = await db.items.find({"owner_id": user_id}, {"_id": 0}).to_list(100)
-    return {**user, "items": items}
+    collections = await db.collections.find({"owner_id": user_id}, {"_id": 0}).to_list(100)
+    return {**user, "items": items, "collections": collections}
 
 # --- Seed Mock Data ---
 @api_router.post("/seed")

@@ -261,6 +261,88 @@ class YellowPecoraAPITester:
         
         return self.run_test("Wishlist Remove - Authenticated", "DELETE", "wishlist/item_mock_002", 200)
 
+    def test_collections_endpoints(self):
+        """Test collection CRUD operations"""
+        if not self.session_token:
+            print("❌ No session token available for authenticated test")
+            return False
+        
+        # Test creating a collection
+        collection_data = {
+            "name": "Test Pokemon Collection",
+            "category": "Carte",
+            "subcategory": "Pokemon",
+            "total": 100,
+            "owned": 25,
+            "percentage": 25
+        }
+        success1, response1 = self.run_test("Create Collection", "POST", "collections", 201, data=collection_data)
+        
+        if not success1:
+            return False
+            
+        collection_id = response1.get('collection_id')
+        if not collection_id:
+            print("❌ No collection_id in response")
+            return False
+        
+        # Test getting user collections
+        success2, response2 = self.run_test("Get User Collections", "GET", f"collections/{self.test_user_id}", 200)
+        
+        # Test updating collection percentage
+        update_data = {"percentage": 75}
+        success3, response3 = self.run_test("Update Collection Percentage", "PUT", f"collections/{collection_id}", 200, data=update_data)
+        
+        return success1 and success2 and success3
+
+    def test_notifications_endpoints(self):
+        """Test notification endpoints"""
+        if not self.session_token:
+            print("❌ No session token available for authenticated test")
+            return False
+        
+        # Test getting notifications
+        success1, response1 = self.run_test("Get Notifications", "GET", "notifications", 200)
+        
+        # Test marking notifications as read
+        success2, response2 = self.run_test("Mark Notifications Read", "POST", "notifications/read-all", 200)
+        
+        return success1 and success2
+
+    def test_item_with_collection_data(self):
+        """Test creating item with collection name and percentage"""
+        if not self.session_token:
+            print("❌ No session token available for authenticated test")
+            return False
+        
+        item_data = {
+            "name": "Test Collection Item",
+            "category": "Carte",
+            "subcategory": "Pokemon",
+            "tags": ["test", "collection"],
+            "condition": "Eccellente",
+            "transaction_type": "scambio",
+            "description": "Test item with collection data",
+            "collection_name": "Test Pokemon Collection",
+            "collection_percentage": 30,
+            "desired_trade_for": "Pikachu cards"
+        }
+        success, response = self.run_test("Create Item with Collection Data", "POST", "items", 201, data=item_data)
+        
+        if success:
+            item_id = response.get('item_id')
+            seekers_count = response.get('seekers_count', 0)
+            print(f"   ✅ Item created with seekers count: {seekers_count}")
+            
+            # Test seekers count endpoint
+            if item_id:
+                success2, response2 = self.run_test("Get Item Seekers Count", "GET", f"items/{item_id}/seekers", 200)
+                if success2:
+                    print(f"   ✅ Seekers endpoint returned: {response2.get('seekers_count', 0)}")
+                return success and success2
+        
+        return success
+
 def main():
     print("🐑 Yellow Pecora API Testing Suite")
     print("=" * 50)
@@ -297,6 +379,9 @@ def main():
         # Test new features
         print("\n🆕 NEW FEATURES API TESTS")
         tester.test_create_item_with_desired_trade()
+        tester.test_item_with_collection_data()
+        tester.test_collections_endpoints()
+        tester.test_notifications_endpoints()
         tester.test_ai_recognize_authenticated()
         tester.test_wishlist_add_authenticated()
         tester.test_wishlist_get_authenticated()
