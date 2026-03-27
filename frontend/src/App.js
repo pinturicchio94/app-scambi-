@@ -10,6 +10,7 @@ import HomePage from "@/pages/HomePage";
 import ExplorePage from "@/pages/ExplorePage";
 import ItemDetailPage from "@/pages/ItemDetailPage";
 import ProfilePage from "@/pages/ProfilePage";
+import TribunalePage from "@/pages/TribunalePage";
 import axios from "axios";
 import "@/App.css";
 
@@ -64,6 +65,7 @@ function AppRouter() {
           <Route path="/esplora" element={<ExplorePage />} />
           <Route path="/oggetto/:id" element={<ItemDetailPage />} />
           <Route path="/profilo/:userId" element={<ProfilePage />} />
+          <Route path="/tribunale" element={<TribunalePage />} />
         </Routes>
       </main>
       <UploadModal open={uploadOpen} onOpenChange={setUploadOpen} onItemCreated={fetchNotifications} />

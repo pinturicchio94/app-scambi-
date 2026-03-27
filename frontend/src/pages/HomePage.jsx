@@ -132,9 +132,9 @@ export default function HomePage() {
           {/* Daily item image + Mascot */}
           <div className="flex-shrink-0 flex flex-col items-center gap-3">
             {dailyItem?.images?.[0] && (
-              <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-2xl overflow-hidden border-4 border-yellow-300 shadow-lg">
+              <Link to={`/oggetto/${dailyItem.item_id}`} className="w-36 h-36 sm:w-44 sm:h-44 rounded-2xl overflow-hidden border-4 border-yellow-300 shadow-lg block hover:border-yellow-200 transition-colors" data-testid="daily-item-image-link">
                 <img src={dailyItem.images[0]} alt={dailyItem?.name} className="w-full h-full object-cover" />
-              </div>
+              </Link>
             )}
             <div className="flex items-center gap-2">
               <YellowPecoraMascot className="w-10 h-10 drop-shadow" />

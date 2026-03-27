@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import YellowPecoraMascot from "@/components/YellowPecoraMascot";
-import { Search, Plus, User, LogOut, Package, Heart, Home, Bell, MessageCircle } from "lucide-react";
+import { Search, Plus, User, LogOut, Package, Heart, Home, Bell, MessageCircle, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -77,6 +77,9 @@ export default function Navbar({ onUploadClick, onLoginClick, onChatClick, onLog
             </Link>
             <Link to="/esplora" className="hidden md:block text-sm text-gray-500 hover:text-gray-900 transition-colors" data-testid="nav-explore">
               Esplora
+            </Link>
+            <Link to="/tribunale" className="hidden md:flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition-colors" data-testid="nav-tribunale">
+              <Shield className="w-3.5 h-3.5" /> L'Oracolo
             </Link>
           </div>
 

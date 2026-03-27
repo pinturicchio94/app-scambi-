@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeftRight, ShoppingCart, Heart } from "lucide-react";
+import { ArrowLeftRight, ShoppingCart, Heart, ShieldCheck, ShieldAlert } from "lucide-react";
 import axios from "axios";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -60,6 +60,22 @@ export default function ItemCard({ item }) {
               )}
             </Badge>
           </div>
+
+          {/* Community Verified Badge */}
+          {item.community_verified && (
+            <div className="absolute top-3 right-12 z-10" data-testid={`verified-badge-${item.item_id}`}>
+              <div className="bg-blue-500 text-white rounded-full p-1 shadow-md" title="Verificato dalla Community">
+                <ShieldCheck className="w-3.5 h-3.5" />
+              </div>
+            </div>
+          )}
+          {item.flagged_fake && (
+            <div className="absolute top-3 right-12 z-10" data-testid={`fake-badge-${item.item_id}`}>
+              <div className="bg-red-500 text-white rounded-full p-1 shadow-md" title="Segnalato come falso">
+                <ShieldAlert className="w-3.5 h-3.5" />
+              </div>
+            </div>
+          )}
 
           {/* Desired trade info */}
           {item.desired_trade_for && (

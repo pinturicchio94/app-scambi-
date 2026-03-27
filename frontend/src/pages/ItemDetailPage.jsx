@@ -3,7 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import TradeProposalModal from "@/components/TradeProposalModal";
 import ChatDrawer from "@/components/ChatDrawer";
-import { ArrowLeftRight, ShoppingCart, Heart, ChevronLeft, Sparkles, Tag, Shield, Star, Target, MessageCircle } from "lucide-react";
+import { ArrowLeftRight, ShoppingCart, Heart, ChevronLeft, Sparkles, Tag, Shield, Star, Target, MessageCircle, ShieldCheck, ShieldAlert, AlertTriangle, ThumbsUp, ThumbsDown, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import axios from "axios";
@@ -19,6 +19,10 @@ export default function ItemDetailPage() {
   const [wishlistLoading, setWishlistLoading] = useState(false);
   const [tradeOpen, setTradeOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [tribunal, setTribunal] = useState(null);
+  const [reportReason, setReportReason] = useState("");
+  const [showReportForm, setShowReportForm] = useState(false);
+  const [reporting, setReporting] = useState(false);
 
   useEffect(() => {
     const fetchItem = async () => {
@@ -32,6 +36,30 @@ export default function ItemDetailPage() {
     };
     fetchItem();
   }, [id]);
+
+  useEffect(() => {
+    const fetchTribunal = async () => {
+      try {
+        const res = await axios.get(`${API}/tribunal/item/${id}`);
+        setTribunal(res.data);
+      } catch {}
+    };
+    if (id) fetchTribunal();
+  }, [id]);
+
+  const handleReport = async () => {
+    if (!reportReason.trim()) return;
+    setReporting(true);
+    try {
+      const res = await axios.post(`${API}/tribunal/report`, { item_id: id, reason: reportReason }, { withCredentials: true });
+      setTribunal(res.data);
+      setShowReportForm(false);
+      setReportReason("");
+    } catch (err) {
+      alert(err.response?.data?.detail || err.response?.data?.message || "Errore nella segnalazione");
+    }
+    setReporting(false);
+  };
 
   const toggleWishlist = async () => {
     if (!user || wishlistLoading) return;
@@ -118,6 +146,16 @@ export default function ItemDetailPage() {
             <Badge className={`text-[10px] ${isSwap ? "bg-yellow-100 text-yellow-800 border-yellow-200" : "bg-gray-100 text-gray-700 border-gray-200"}`}>
               {isSwap ? "Scambio" : "Vendita"}
             </Badge>
+            {item.community_verified && (
+              <Badge className="text-[10px] bg-blue-100 text-blue-800 border-blue-200" data-testid="verified-badge">
+                <ShieldCheck className="w-3 h-3 mr-1" /> Verificato dalla Community
+              </Badge>
+            )}
+            {item.flagged_fake && (
+              <Badge className="text-[10px] bg-red-100 text-red-800 border-red-200" data-testid="fake-badge">
+                <ShieldAlert className="w-3 h-3 mr-1" /> Segnalato Falso
+              </Badge>
+            )}
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-heading font-bold text-gray-900" data-testid="item-name">{item.name}</h1>
@@ -210,6 +248,74 @@ export default function ItemDetailPage() {
                 {wishlisted ? "Aggiunto" : "Desideri"}
               </Button>
             </div>
+          </div>
+
+          {/* Tribunale Anti-Fake Section */}
+          <div className="border border-gray-100 rounded-xl p-4 mt-2" data-testid="tribunal-section">
+            <div className="flex items-center gap-2 mb-3">
+              <Shield className="w-4 h-4 text-gray-500" />
+              <span className="text-xs font-semibold text-gray-700 uppercase tracking-wider">Verifica Community</span>
+            </div>
+            {tribunal?.status === "verified" ? (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-3">
+                <ShieldCheck className="w-6 h-6 text-blue-600 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-blue-900">Verificato dalla Community</p>
+                  <p className="text-[10px] text-blue-700">{tribunal.votes_authentic} Saggi confermano l'autenticita</p>
+                </div>
+              </div>
+            ) : tribunal?.status === "fake" ? (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-3">
+                <ShieldAlert className="w-6 h-6 text-red-500 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-red-900">Non ha superato la verifica</p>
+                  <p className="text-[10px] text-red-700">{tribunal.votes_fake} Saggi ritengono l'oggetto sospetto</p>
+                </div>
+              </div>
+            ) : tribunal?.status === "voting" ? (
+              <div className="space-y-2">
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                  <p className="text-sm font-semibold text-yellow-900 mb-1">In esame dal Tribunale</p>
+                  <div className="flex items-center gap-3 text-xs text-yellow-800">
+                    <span className="flex items-center gap-1"><ThumbsUp className="w-3 h-3 text-green-600" /> {tribunal.votes_authentic || 0}</span>
+                    <span className="flex items-center gap-1"><ThumbsDown className="w-3 h-3 text-red-500" /> {tribunal.votes_fake || 0}</span>
+                    <span className="flex items-center gap-1"><Eye className="w-3 h-3" /> {(tribunal.votes?.length || 0)}/3 voti</span>
+                  </div>
+                </div>
+                <Link to="/tribunale" className="text-xs text-gray-500 hover:text-gray-900 underline">Vai al Tribunale per votare</Link>
+              </div>
+            ) : (
+              <>
+                {!item.community_verified && user && !isOwnItem && !showReportForm && (
+                  <button onClick={() => setShowReportForm(true)}
+                    className="text-xs text-gray-500 hover:text-orange-600 flex items-center gap-1 transition-colors"
+                    data-testid="report-fake-btn"
+                  >
+                    <AlertTriangle className="w-3 h-3" /> Segnala come sospetto
+                  </button>
+                )}
+                {showReportForm && (
+                  <div className="space-y-2 bg-orange-50 border border-orange-200 rounded-lg p-3">
+                    <p className="text-xs font-semibold text-orange-800">Perche' ritieni questo oggetto sospetto?</p>
+                    <textarea value={reportReason} onChange={(e) => setReportReason(e.target.value)}
+                      placeholder="Es. Le foto sembrano prese da internet, i colori non corrispondono al modello originale..."
+                      className="w-full px-3 py-2 text-xs border border-orange-200 rounded-lg resize-none h-14 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                      data-testid="report-reason-input"
+                    />
+                    <div className="flex gap-2">
+                      <Button onClick={handleReport} disabled={reporting || !reportReason.trim()} size="sm"
+                        className="rounded-full bg-orange-600 text-white text-xs h-7 px-3" data-testid="report-submit-btn"
+                      >{reporting ? "Invio..." : "Invia Segnalazione"}</Button>
+                      <button onClick={() => { setShowReportForm(false); setReportReason(""); }} className="text-xs text-gray-400 hover:text-gray-600">Annulla</button>
+                    </div>
+                  </div>
+                )}
+                {!user && <p className="text-xs text-gray-400">Accedi per segnalare oggetti sospetti</p>}
+                {isOwnItem && !item.community_verified && (
+                  <p className="text-xs text-gray-400">I tuoi oggetti possono essere segnalati da altri utenti per la verifica.</p>
+                )}
+              </>
+            )}
           </div>
         </div>
       </div>

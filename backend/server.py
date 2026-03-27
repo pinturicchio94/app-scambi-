@@ -469,6 +469,8 @@ async def create_item(request: Request):
         "desired_trade_for": body.get("desired_trade_for", ""),
         "collection_name": body.get("collection_name", ""),
         "collection_percentage": body.get("collection_percentage"),
+        "visibility": body.get("visibility", "public"),
+        "profile_section": body.get("profile_section", "scambio_vendita"),
         "owner_id": user["user_id"],
         "owner_name": user.get("name", ""),
         "owner_avatar": user.get("picture", ""),
@@ -790,12 +792,146 @@ async def get_seekers_count(item_id: str):
 # --- User Profile ---
 @api_router.get("/users/{user_id}")
 async def get_user_profile(user_id: str):
-    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
     if not user:
         raise HTTPException(status_code=404, detail="Utente non trovato")
-    items = await db.items.find({"owner_id": user_id}, {"_id": 0}).to_list(100)
+    items = await db.items.find({"owner_id": user_id}, {"_id": 0}).to_list(200)
     collections = await db.collections.find({"owner_id": user_id}, {"_id": 0}).to_list(100)
-    return {**user, "items": items, "collections": collections}
+    # Get average rating
+    ratings = await db.ratings.find({"rated_user_id": user_id}, {"_id": 0}).to_list(100)
+    avg_rating = round(sum(r.get("score", 0) for r in ratings) / len(ratings), 1) if ratings else 0
+    return {**user, "items": items, "collections": collections, "avg_rating": avg_rating, "rating_count": len(ratings), "ratings": ratings[:10]}
+
+# --- Item Visibility Toggle ---
+@api_router.put("/items/{item_id}/visibility")
+async def toggle_item_visibility(request: Request, item_id: str):
+    user = await get_current_user(request)
+    body = await request.json()
+    item = await db.items.find_one({"item_id": item_id, "owner_id": user["user_id"]})
+    if not item:
+        raise HTTPException(status_code=404, detail="Oggetto non trovato")
+    await db.items.update_one({"item_id": item_id}, {"$set": {"visibility": body.get("visibility", "public")}})
+    return {"message": "Visibilita aggiornata"}
+
+# --- Item Section Update ---
+@api_router.put("/items/{item_id}/section")
+async def update_item_section(request: Request, item_id: str):
+    user = await get_current_user(request)
+    body = await request.json()
+    item = await db.items.find_one({"item_id": item_id, "owner_id": user["user_id"]})
+    if not item:
+        raise HTTPException(status_code=404, detail="Oggetto non trovato")
+    section = body.get("profile_section", "scambio_vendita")
+    tx = body.get("transaction_type")
+    update = {"profile_section": section}
+    if tx:
+        update["transaction_type"] = tx
+    await db.items.update_one({"item_id": item_id}, {"$set": update})
+    return {"message": "Sezione aggiornata"}
+
+# --- Rating/Review System ---
+@api_router.post("/ratings")
+async def create_rating(request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    rated_user_id = body.get("rated_user_id")
+    score = body.get("score", 5)
+    comment = body.get("comment", "")
+    trade_id = body.get("trade_id", "")
+    if not rated_user_id:
+        raise HTTPException(status_code=400, detail="rated_user_id richiesto")
+    if score < 1 or score > 5:
+        raise HTTPException(status_code=400, detail="Punteggio da 1 a 5")
+    if rated_user_id == user["user_id"]:
+        raise HTTPException(status_code=400, detail="Non puoi valutare te stesso")
+    rating_id = f"rating_{uuid.uuid4().hex[:12]}"
+    await db.ratings.insert_one({
+        "rating_id": rating_id,
+        "rater_id": user["user_id"],
+        "rater_name": user.get("name", ""),
+        "rater_avatar": user.get("picture", ""),
+        "rated_user_id": rated_user_id,
+        "score": score,
+        "comment": comment,
+        "trade_id": trade_id,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    # Update user level based on rating count
+    all_ratings = await db.ratings.count_documents({"rated_user_id": rated_user_id})
+    avg = await db.ratings.aggregate([
+        {"$match": {"rated_user_id": rated_user_id}},
+        {"$group": {"_id": None, "avg": {"$avg": "$score"}}}
+    ]).to_list(1)
+    avg_score = avg[0]["avg"] if avg else 0
+    level = "Principiante"
+    if all_ratings >= 10 and avg_score >= 4:
+        level = "Collezionista Esperto"
+    elif all_ratings >= 5:
+        level = "Collezionista Intermedio"
+    await db.users.update_one({"user_id": rated_user_id}, {"$set": {"level": level}})
+    return {"rating_id": rating_id, "message": "Valutazione inviata"}
+
+@api_router.get("/ratings/{user_id}")
+async def get_user_ratings(user_id: str):
+    ratings = await db.ratings.find({"rated_user_id": user_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    avg = await db.ratings.aggregate([
+        {"$match": {"rated_user_id": user_id}},
+        {"$group": {"_id": None, "avg": {"$avg": "$score"}}}
+    ]).to_list(1)
+    return {"ratings": ratings, "average": round(avg[0]["avg"], 1) if avg else 0, "count": len(ratings)}
+
+# --- Pending Trades ---
+@api_router.get("/trades/pending")
+async def get_pending_trades(request: Request):
+    user = await get_current_user(request)
+    uid = user["user_id"]
+    pending = await db.trades.find(
+        {"$or": [
+            {"proposer_id": uid, "status": "pending"},
+            {"receiver_id": uid, "status": "pending"}
+        ]}, {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    return pending
+
+# --- Collection Suggestions (AI-powered) ---
+@api_router.get("/collections/{user_id}/suggestions")
+async def get_collection_suggestions(user_id: str):
+    collections = await db.collections.find({"owner_id": user_id}, {"_id": 0}).to_list(50)
+    user_items = await db.items.find({"owner_id": user_id}, {"_id": 0}).to_list(200)
+    user_item_names = set(i.get("name", "").lower() for i in user_items)
+    user_tags = set()
+    for i in user_items:
+        user_tags.update(t.lower() for t in i.get("tags", []))
+    suggestions = []
+    for coll in collections:
+        if coll.get("percentage", 0) >= 100:
+            continue
+        coll_cat = coll.get("category", "")
+        coll_sub = coll.get("subcategory", "")
+        # Find items from other users in the same category/subcategory
+        query = {"owner_id": {"$ne": user_id}}
+        if coll_cat:
+            query["category"] = coll_cat
+        if coll_sub:
+            query["subcategory"] = coll_sub
+        potential = await db.items.find(query, {"_id": 0}).to_list(20)
+        for p in potential:
+            if p.get("name", "").lower() not in user_item_names:
+                suggestions.append({
+                    "collection_name": coll.get("name", ""),
+                    "suggested_item": {
+                        "item_id": p["item_id"], "name": p["name"],
+                        "images": p.get("images", [])[:1],
+                        "owner_name": p.get("owner_name", ""),
+                        "owner_id": p.get("owner_id", ""),
+                        "estimated_value": p.get("estimated_value")
+                    }
+                })
+                if len(suggestions) >= 10:
+                    break
+        if len(suggestions) >= 10:
+            break
+    return suggestions
 
 # --- Seed Mock Data ---
 @api_router.post("/seed")
@@ -927,6 +1063,179 @@ async def seed_data():
         await db.items.insert_one(item)
 
     return {"message": "Dati mock caricati", "items": len(mock_items), "users": len(mock_users)}
+
+# --- Tribunale Anti-Fake della Community ---
+TRIBUNAL_QUORUM = 3  # Votes needed to decide
+TRIBUNAL_ELIGIBLE_LEVELS = ["Collezionista Esperto", "Collezionista Intermedio"]
+HIGH_VALUE_THRESHOLD = 200  # Auto-submit items above this value
+
+@api_router.post("/tribunal/report")
+async def report_item_for_tribunal(request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    item_id = body.get("item_id")
+    reason = body.get("reason", "Sospetto falso")
+    if not item_id:
+        raise HTTPException(status_code=400, detail="item_id richiesto")
+    item = await db.items.find_one({"item_id": item_id}, {"_id": 0})
+    if not item:
+        raise HTTPException(status_code=404, detail="Oggetto non trovato")
+    existing = await db.tribunal.find_one({"item_id": item_id, "status": {"$in": ["pending", "voting"]}})
+    if existing:
+        return {"message": "Questo oggetto e' gia sotto esame", "tribunal_id": existing.get("tribunal_id", "")}
+    tribunal_id = f"trib_{uuid.uuid4().hex[:12]}"
+    tribunal = {
+        "tribunal_id": tribunal_id,
+        "item_id": item_id,
+        "item_name": item.get("name", ""),
+        "item_images": item.get("images", [])[:3],
+        "item_category": item.get("category", ""),
+        "item_subcategory": item.get("subcategory", ""),
+        "item_value": item.get("estimated_value", 0),
+        "item_owner_id": item.get("owner_id", ""),
+        "item_owner_name": item.get("owner_name", ""),
+        "reported_by": user["user_id"],
+        "reporter_name": user.get("name", ""),
+        "reason": reason,
+        "status": "voting",  # pending -> voting -> verified / fake
+        "votes": [],
+        "votes_authentic": 0,
+        "votes_fake": 0,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.tribunal.insert_one(tribunal)
+    # Notify item owner
+    await db.notifications.insert_one({
+        "notification_id": f"notif_{uuid.uuid4().hex[:12]}",
+        "user_id": item.get("owner_id", ""),
+        "type": "tribunal_report",
+        "title": "Il tuo oggetto e' sotto verifica",
+        "message": f'"{item["name"]}" e\' stato segnalato per verifica dalla community. I Saggi esamineranno le foto.',
+        "link": f"/oggetto/{item_id}",
+        "read": False,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    created = await db.tribunal.find_one({"tribunal_id": tribunal_id}, {"_id": 0})
+    return created
+
+@api_router.get("/tribunal/item/{item_id}")
+async def get_tribunal_status(item_id: str):
+    tribunal = await db.tribunal.find_one(
+        {"item_id": item_id},
+        {"_id": 0}
+    )
+    if not tribunal:
+        return {"status": "none", "item_id": item_id}
+    return tribunal
+
+@api_router.post("/tribunal/vote/{item_id}")
+async def vote_on_tribunal(request: Request, item_id: str):
+    user = await get_current_user(request)
+    # Check eligibility: must be at least Intermedio level
+    user_level = user.get("level", "Principiante")
+    # Count their ratings to check if they qualify
+    rating_count = await db.ratings.count_documents({"rated_user_id": user["user_id"]})
+    is_eligible = user_level in TRIBUNAL_ELIGIBLE_LEVELS or rating_count >= 3
+    if not is_eligible:
+        raise HTTPException(status_code=403, detail="Solo i Garanti (collezionisti esperti) possono votare nel Tribunale")
+    body = await request.json()
+    vote = body.get("vote")  # "authentic" or "fake"
+    comment = body.get("comment", "")
+    if vote not in ("authentic", "fake"):
+        raise HTTPException(status_code=400, detail="Vote deve essere 'authentic' o 'fake'")
+    tribunal = await db.tribunal.find_one({"item_id": item_id, "status": "voting"})
+    if not tribunal:
+        raise HTTPException(status_code=404, detail="Nessun caso aperto per questo oggetto")
+    # Check if user already voted
+    existing_votes = tribunal.get("votes", [])
+    if any(v["user_id"] == user["user_id"] for v in existing_votes):
+        raise HTTPException(status_code=400, detail="Hai gia votato per questo oggetto")
+    # Cannot vote on own item
+    if tribunal.get("item_owner_id") == user["user_id"]:
+        raise HTTPException(status_code=400, detail="Non puoi votare sul tuo stesso oggetto")
+    new_vote = {
+        "user_id": user["user_id"],
+        "user_name": user.get("name", ""),
+        "user_avatar": user.get("picture", ""),
+        "user_level": user_level,
+        "vote": vote,
+        "comment": comment,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    inc_field = "votes_authentic" if vote == "authentic" else "votes_fake"
+    await db.tribunal.update_one(
+        {"item_id": item_id, "status": "voting"},
+        {"$push": {"votes": new_vote}, "$inc": {inc_field: 1}}
+    )
+    # Check quorum
+    updated = await db.tribunal.find_one({"item_id": item_id, "status": "voting"}, {"_id": 0})
+    total_votes = updated.get("votes_authentic", 0) + updated.get("votes_fake", 0)
+    if total_votes >= TRIBUNAL_QUORUM:
+        if updated["votes_authentic"] > updated["votes_fake"]:
+            # Verified! Add community badge to item
+            await db.tribunal.update_one(
+                {"item_id": item_id, "status": "voting"},
+                {"$set": {"status": "verified"}}
+            )
+            await db.items.update_one(
+                {"item_id": item_id},
+                {"$set": {"community_verified": True, "community_verified_at": datetime.now(timezone.utc).isoformat()}}
+            )
+            # Notify owner
+            await db.notifications.insert_one({
+                "notification_id": f"notif_{uuid.uuid4().hex[:12]}",
+                "user_id": updated.get("item_owner_id", ""),
+                "type": "tribunal_verified",
+                "title": "Oggetto Verificato dalla Community!",
+                "message": f'"{updated["item_name"]}" ha ricevuto il bollino blu di autenticita!',
+                "link": f"/oggetto/{item_id}",
+                "read": False,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+        else:
+            # Flagged as fake
+            await db.tribunal.update_one(
+                {"item_id": item_id, "status": "voting"},
+                {"$set": {"status": "fake"}}
+            )
+            await db.items.update_one(
+                {"item_id": item_id},
+                {"$set": {"community_verified": False, "flagged_fake": True}}
+            )
+            await db.notifications.insert_one({
+                "notification_id": f"notif_{uuid.uuid4().hex[:12]}",
+                "user_id": updated.get("item_owner_id", ""),
+                "type": "tribunal_fake",
+                "title": "Oggetto non superato la verifica",
+                "message": f'"{updated["item_name"]}" non ha superato la verifica della community.',
+                "link": f"/oggetto/{item_id}",
+                "read": False,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+    result = await db.tribunal.find_one({"item_id": item_id}, {"_id": 0})
+    return result
+
+@api_router.get("/tribunal/pending")
+async def get_pending_tribunal_cases(request: Request):
+    user = await get_current_user(request)
+    cases = await db.tribunal.find(
+        {"status": "voting"},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    # Mark which ones user already voted on
+    uid = user["user_id"]
+    for case in cases:
+        case["user_has_voted"] = any(v["user_id"] == uid for v in case.get("votes", []))
+        case["is_own_item"] = case.get("item_owner_id") == uid
+    return cases
+
+@api_router.get("/tribunal/stats")
+async def get_tribunal_stats():
+    total = await db.tribunal.count_documents({})
+    verified = await db.tribunal.count_documents({"status": "verified"})
+    fake = await db.tribunal.count_documents({"status": "fake"})
+    voting = await db.tribunal.count_documents({"status": "voting"})
+    return {"total": total, "verified": verified, "fake": fake, "voting": voting}
 
 @api_router.get("/")
 async def root():

@@ -3,7 +3,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { CATEGORIES, CONDITIONS } from "@/data/mockData";
 import {
   Upload, Sparkles, Check, ChevronRight, ChevronLeft,
-  Image as ImageIcon, X, Plus, Loader2, PenLine, Users, BarChart3
+  Image as ImageIcon, X, Plus, Loader2, PenLine, Users, BarChart3,
+  AlertTriangle, GripVertical
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +18,20 @@ import axios from "axios";
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const CUSTOM_SUB = "__altra__";
 
-export default function UploadModal({ open, onOpenChange, onItemCreated }) {
+const TRANSACTION_OPTIONS = [
+  { value: "scambio", label: "Solo Scambio" },
+  { value: "vendita", label: "Solo Vendita" },
+  { value: "scambio_vendita", label: "Scambio + Vendita (valuto entrambi)" },
+];
+
+const SECTION_OPTIONS = [
+  { value: "scambio_vendita", label: "Scambio/Vendita (aperto a tutto)" },
+  { value: "scambiabili", label: "Scambiabili (solo scambio specifico)" },
+  { value: "vendita", label: "In Vendita (solo acquisto)" },
+  { value: "collezione_privata", label: "Collezione Privata" },
+];
+
+export default function UploadModal({ open, onOpenChange, onItemCreated, defaultSection }) {
   const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [photos, setPhotos] = useState([]);
@@ -25,6 +39,7 @@ export default function UploadModal({ open, onOpenChange, onItemCreated }) {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiDone, setAiDone] = useState(false);
   const [aiData, setAiData] = useState(null);
+  const [aiWarning, setAiWarning] = useState("");
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const [subcategory, setSubcategory] = useState("");
@@ -34,24 +49,27 @@ export default function UploadModal({ open, onOpenChange, onItemCreated }) {
   const [estimatedValue, setEstimatedValue] = useState("");
   const [condition, setCondition] = useState("");
   const [description, setDescription] = useState("");
-  const [transactionType, setTransactionType] = useState("scambio");
+  const [transactionType, setTransactionType] = useState("scambio_vendita");
+  const [profileSection, setProfileSection] = useState(defaultSection || "scambio_vendita");
   const [desiredTradeFor, setDesiredTradeFor] = useState("");
   const [notes, setNotes] = useState("");
   const [collectionName, setCollectionName] = useState("");
   const [collectionPercentage, setCollectionPercentage] = useState("");
+  const [visibility, setVisibility] = useState("public");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [seekersCount, setSeekersCount] = useState(0);
 
   const resetForm = useCallback(() => {
     setStep(1); setPhotos([]); setUploading(false);
-    setAiLoading(false); setAiDone(false); setAiData(null);
+    setAiLoading(false); setAiDone(false); setAiData(null); setAiWarning("");
     setName(""); setCategory(""); setSubcategory(""); setCustomSubcategory("");
     setTags([]); setTagInput(""); setEstimatedValue(""); setCondition("");
-    setDescription(""); setTransactionType("scambio"); setDesiredTradeFor("");
+    setDescription(""); setTransactionType("scambio_vendita"); setDesiredTradeFor("");
+    setProfileSection(defaultSection || "scambio_vendita");
     setNotes(""); setCollectionName(""); setCollectionPercentage("");
-    setSubmitting(false); setDone(false); setSeekersCount(0);
-  }, []);
+    setVisibility("public"); setSubmitting(false); setDone(false); setSeekersCount(0);
+  }, [defaultSection]);
 
   const uploadSingleFile = async (file) => {
     const formData = new FormData();
@@ -78,7 +96,7 @@ export default function UploadModal({ open, onOpenChange, onItemCreated }) {
       if (photos.length + newPhotos.length >= 6) break;
       newPhotos.push({ file, previewUrl: URL.createObjectURL(file), uploadedUrl: null });
     }
-    setPhotos((prev) => [...prev, ...newPhotos]);
+    setPhotos(prev => [...prev, ...newPhotos]);
     setUploading(true);
     const updated = [...photos, ...newPhotos];
     for (let i = photos.length; i < updated.length; i++) {
@@ -90,79 +108,90 @@ export default function UploadModal({ open, onOpenChange, onItemCreated }) {
   };
 
   const removePhoto = (index) => {
-    setPhotos((prev) => prev.filter((_, i) => i !== index));
-    if (photos.length <= 1) { setAiDone(false); setAiData(null); }
+    setPhotos(prev => prev.filter((_, i) => i !== index));
+    if (photos.length <= 1) { setAiDone(false); setAiData(null); setAiWarning(""); }
+  };
+
+  // Reorder: move photo to position 0 (set as main)
+  const setAsMain = (index) => {
+    if (index === 0) return;
+    setPhotos(prev => {
+      const copy = [...prev];
+      const [moved] = copy.splice(index, 1);
+      copy.unshift(moved);
+      return copy;
+    });
+  };
+
+  // Swap two photos
+  const swapPhotos = (i, j) => {
+    setPhotos(prev => {
+      const copy = [...prev];
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+      return copy;
+    });
   };
 
   const runAiRecognition = async () => {
     if (photos.length === 0) return;
-    setAiLoading(true);
+    setAiLoading(true); setAiWarning("");
     try {
       const base64 = await fileToBase64(photos[0].file);
       const res = await axios.post(`${API}/recognize`, { image_base64: base64 }, { withCredentials: true });
       setAiData(res.data);
-      setName(res.data.name || "");
-      // Map AI category to our list, or keep raw
+      const n = res.data.name || "";
+      if (n.toLowerCase().includes("non identificato") || n.toLowerCase().includes("unknown")) {
+        setAiWarning("L'AI non e' riuscita a identificare l'oggetto con certezza. Verifica i dati manualmente.");
+      }
+      if (photos.length > 1) {
+        setAiWarning(prev => prev ? prev + " Hai caricato piu' foto: assicurati che siano tutte dello stesso oggetto." :
+          "Hai caricato piu' foto: l'AI ha analizzato solo la prima. Assicurati che siano tutte dello stesso oggetto.");
+      }
+      setName(n);
       const matchedCat = CATEGORIES.find(c => c.label.toLowerCase() === (res.data.category || "").toLowerCase());
       if (matchedCat) {
         setCategory(matchedCat.label);
-        // Check if AI subcategory is in the list
         const aiSub = res.data.subcategory || "";
-        if (matchedCat.subcategories.includes(aiSub)) {
-          setSubcategory(aiSub);
-        } else if (aiSub) {
-          setSubcategory(CUSTOM_SUB);
-          setCustomSubcategory(aiSub);
-        }
-      } else {
-        setCategory(res.data.category || "");
-      }
+        if (matchedCat.subcategories.includes(aiSub)) setSubcategory(aiSub);
+        else if (aiSub) { setSubcategory(CUSTOM_SUB); setCustomSubcategory(aiSub); }
+      } else { setCategory(res.data.category || ""); }
       setTags(res.data.tags || []);
       setEstimatedValue(res.data.estimated_value ? String(res.data.estimated_value) : "");
       setCondition(res.data.condition_hint || "");
       setDescription(res.data.description || "");
-      // Auto-suggest collection name from subcategory
-      if (res.data.subcategory) {
-        setCollectionName(`${res.data.category || ""} ${res.data.subcategory || ""}`.trim());
-      }
+      if (res.data.subcategory) setCollectionName(`${res.data.category || ""} ${res.data.subcategory || ""}`.trim());
       setAiDone(true);
     } catch (err) {
-      console.error("AI recognition error:", err);
-      setAiDone(true);
-      setAiData({ name: "Oggetto non identificato", category: "Carte", tags: ["da verificare"] });
-      setName("Oggetto non identificato");
+      setAiDone(true); setAiWarning("Errore nel riconoscimento AI. Compila i campi manualmente.");
+      setName(""); setAiData(null);
     }
     setAiLoading(false);
   };
 
-  const addTag = () => {
-    const t = tagInput.trim();
-    if (t && !tags.includes(t)) { setTags([...tags, t]); setTagInput(""); }
-  };
-  const removeTag = (tag) => setTags(tags.filter((t) => t !== tag));
-
-  const selectedCat = CATEGORIES.find((c) => c.label === category);
+  const addTag = () => { const t = tagInput.trim(); if (t && !tags.includes(t)) { setTags([...tags, t]); setTagInput(""); } };
+  const removeTag = (tag) => setTags(tags.filter(t => t !== tag));
+  const selectedCat = CATEGORIES.find(c => c.label === category);
   const effectiveSubcategory = subcategory === CUSTOM_SUB ? customSubcategory : subcategory;
 
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      const imageUrls = photos.map((p) => p.uploadedUrl).filter(Boolean);
+      const imageUrls = photos.map(p => p.uploadedUrl).filter(Boolean);
       const payload = {
         name, category, subcategory: effectiveSubcategory, tags,
         condition: condition || "Buono",
         estimated_value: estimatedValue ? parseFloat(estimatedValue) : null,
-        transaction_type: transactionType,
-        description: `${description}${notes ? `\n\n${notes}` : ""}`,
+        transaction_type: transactionType, description: `${description}${notes ? `\n\n${notes}` : ""}`,
         images: imageUrls, desired_trade_for: desiredTradeFor,
         collection_name: collectionName,
         collection_percentage: collectionPercentage ? parseInt(collectionPercentage) : null,
+        profile_section: profileSection, visibility,
       };
       const res = await axios.post(`${API}/items`, payload, { withCredentials: true });
       setSeekersCount(res.data.seekers_count || 0);
       setDone(true);
       if (onItemCreated) onItemCreated();
-    } catch (err) { console.error("Create item error:", err); }
+    } catch (err) { console.error(err); }
     setSubmitting(false);
   };
 
@@ -172,12 +201,8 @@ export default function UploadModal({ open, onOpenChange, onItemCreated }) {
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto" data-testid="upload-modal">
         <DialogHeader>
-          <DialogTitle className="font-heading text-xl">
-            {done ? "Oggetto Caricato!" : "Carica Oggetto"}
-          </DialogTitle>
-          <DialogDescription>
-            {done ? "Il tuo oggetto e' ora visibile nella community." : `Step ${step} di 3`}
-          </DialogDescription>
+          <DialogTitle className="font-heading text-xl">{done ? "Oggetto Caricato!" : "Carica Oggetto"}</DialogTitle>
+          <DialogDescription>{done ? "Il tuo oggetto e' ora visibile." : `Step ${step} di 3`}</DialogDescription>
         </DialogHeader>
 
         {done ? (
@@ -185,39 +210,41 @@ export default function UploadModal({ open, onOpenChange, onItemCreated }) {
             <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
               <Check className="w-8 h-8 text-green-600" />
             </div>
-            <p className="text-sm text-gray-600 mb-4">
-              L'oggetto "{name}" e' stato aggiunto con successo.
-            </p>
+            <p className="text-sm text-gray-600 mb-3">"{name}" aggiunto con successo.</p>
             {seekersCount > 0 && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4 text-left" data-testid="seekers-info">
-                <div className="flex items-center gap-2 mb-1">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-4 text-left" data-testid="seekers-info">
+                <div className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-yellow-700" />
-                  <span className="text-sm font-semibold text-yellow-800">
-                    {seekersCount} {seekersCount === 1 ? "persona sta cercando" : "persone stanno cercando"} questo oggetto!
-                  </span>
+                  <span className="text-sm font-semibold text-yellow-800">{seekersCount} persone cercano questo oggetto!</span>
                 </div>
-                <p className="text-xs text-yellow-700/70">
-                  Abbiamo inviato una notifica Match Perfetto agli utenti interessati.
-                </p>
               </div>
             )}
-            <Button onClick={handleClose} className="rounded-full bg-gray-900 text-white" data-testid="upload-done-btn">
-              Chiudi
-            </Button>
+            <Button onClick={handleClose} className="rounded-full bg-gray-900 text-white" data-testid="upload-done-btn">Chiudi</Button>
           </div>
         ) : step === 1 ? (
-          /* STEP 1: Photos + AI */
-          <div className="space-y-5">
-            <div className="grid grid-cols-3 gap-3">
+          <div className="space-y-4">
+            {/* Photo Grid with reorder */}
+            <div className="grid grid-cols-3 gap-2">
               {photos.map((photo, i) => (
-                <div key={i} className="relative aspect-square rounded-xl overflow-hidden bg-gray-50 border border-gray-200">
+                <div key={i} className="relative aspect-square rounded-xl overflow-hidden bg-gray-50 border border-gray-200 group">
                   <img src={photo.previewUrl} alt="" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
                   <button onClick={() => removePhoto(i)}
-                    className="absolute top-1.5 right-1.5 w-6 h-6 bg-black/60 rounded-full flex items-center justify-center hover:bg-black/80"
+                    className="absolute top-1 right-1 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                     data-testid={`remove-photo-${i}`}
-                  ><X className="w-3.5 h-3.5 text-white" /></button>
-                  {i === 0 && (
-                    <span className="absolute bottom-1.5 left-1.5 text-[9px] bg-yellow-400 text-yellow-900 font-bold px-1.5 py-0.5 rounded">Principale</span>
+                  ><X className="w-3 h-3 text-white" /></button>
+                  {i !== 0 && (
+                    <button onClick={() => setAsMain(i)}
+                      className="absolute bottom-1 left-1 text-[8px] bg-white/90 text-gray-700 font-medium px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                      data-testid={`set-main-${i}`}
+                    >Principale</button>
+                  )}
+                  {i === 0 && <span className="absolute bottom-1 left-1 text-[8px] bg-yellow-400 text-yellow-900 font-bold px-1.5 py-0.5 rounded">Principale</span>}
+                  {i > 0 && (
+                    <button onClick={() => swapPhotos(i, i-1)}
+                      className="absolute top-1 left-1 w-5 h-5 bg-white/80 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      data-testid={`move-photo-${i}`}
+                    ><GripVertical className="w-3 h-3 text-gray-500" /></button>
                   )}
                 </div>
               ))}
@@ -225,33 +252,29 @@ export default function UploadModal({ open, onOpenChange, onItemCreated }) {
                 <label className="aspect-square rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center cursor-pointer hover:border-gray-400 transition-colors" data-testid="add-photo-btn">
                   <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFilesSelect(e.target.files)} />
                   <Plus className="w-5 h-5 text-gray-400 mb-1" />
-                  <span className="text-[10px] text-gray-400">{photos.length === 0 ? "Aggiungi foto" : "Altre foto"}</span>
+                  <span className="text-[9px] text-gray-400">{photos.length === 0 ? "Aggiungi" : "Altre"}</span>
                 </label>
               )}
             </div>
-
             {photos.length === 0 && (
               <label data-testid="upload-dropzone"
-                className="block border-2 border-dashed border-gray-200 rounded-2xl p-10 text-center cursor-pointer hover:border-gray-400 transition-colors"
+                className="block border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center cursor-pointer hover:border-gray-400"
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => { e.preventDefault(); handleFilesSelect(e.dataTransfer.files); }}
               >
                 <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFilesSelect(e.target.files)} />
-                <div className="flex flex-col items-center gap-3">
-                  <div className="w-14 h-14 bg-gray-50 rounded-full flex items-center justify-center">
-                    <ImageIcon className="w-6 h-6 text-gray-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">Trascina le foto qui</p>
-                    <p className="text-xs text-gray-400 mt-1">oppure clicca per selezionare (max 6 foto)</p>
-                  </div>
-                </div>
+                <ImageIcon className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                <p className="text-sm text-gray-600">Trascina le foto qui</p>
+                <p className="text-xs text-gray-400 mt-1">Max 6 foto. Clicca "Principale" per cambiare la foto copertina.</p>
               </label>
             )}
+            {uploading && <div className="flex items-center justify-center gap-2 text-sm text-gray-500"><Loader2 className="w-4 h-4 animate-spin" /> Caricamento...</div>}
 
-            {uploading && (
-              <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
-                <Loader2 className="w-4 h-4 animate-spin" /> Caricamento foto...
+            {/* AI Warning */}
+            {aiWarning && (
+              <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 flex items-start gap-2" data-testid="ai-warning">
+                <AlertTriangle className="w-4 h-4 text-orange-600 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-orange-800">{aiWarning}</p>
               </div>
             )}
 
@@ -259,209 +282,165 @@ export default function UploadModal({ open, onOpenChange, onItemCreated }) {
               <Button onClick={runAiRecognition} disabled={uploading}
                 className="w-full rounded-full bg-yellow-400 text-yellow-900 hover:bg-yellow-500 font-medium"
                 data-testid="ai-recognize-btn"
-              >
-                <Sparkles className="w-4 h-4 mr-2" /> Riconosci con AI
-              </Button>
+              ><Sparkles className="w-4 h-4 mr-2" /> Riconosci con AI</Button>
             )}
-
             {aiLoading && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-center" data-testid="ai-loading">
                 <Loader2 className="w-5 h-5 animate-spin text-yellow-600 mx-auto mb-2" />
-                <p className="text-sm text-yellow-800">L'AI sta analizzando l'immagine...</p>
+                <p className="text-sm text-yellow-800">L'AI sta analizzando...</p>
               </div>
             )}
-
-            {aiDone && aiData && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4" data-testid="ai-recognition">
-                <div className="flex items-center gap-2 mb-2">
+            {aiDone && !aiWarning && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3" data-testid="ai-recognition">
+                <div className="flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-yellow-600" />
                   <span className="text-sm font-semibold text-yellow-800">L'AI ha riconosciuto l'oggetto!</span>
                 </div>
-                <p className="text-xs text-yellow-700/70">Tutti i campi sono editabili. Verifica e correggi se necessario.</p>
               </div>
             )}
 
             <Button onClick={() => setStep(2)} disabled={photos.length === 0 || uploading}
-              className="w-full rounded-full bg-gray-900 text-white disabled:opacity-40"
-              data-testid="upload-next-step-btn"
-            >
-              Avanti <ChevronRight className="w-4 h-4 ml-1" />
-            </Button>
+              className="w-full rounded-full bg-gray-900 text-white disabled:opacity-40" data-testid="upload-next-step-btn"
+            >Avanti <ChevronRight className="w-4 h-4 ml-1" /></Button>
           </div>
         ) : step === 2 ? (
-          /* STEP 2: Item Details */
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
               <PenLine className="w-3.5 h-3.5" />
-              <span>{aiDone ? "Dati suggeriti dall'AI - modifica liberamente" : "Compila i dati dell'oggetto"}</span>
+              <span>{aiDone ? "Dati AI - modifica liberamente" : "Compila i dati"}</span>
             </div>
-
             <div>
-              <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Nome oggetto</label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Es. Charizard Holo 1a Edizione" className="mt-1" data-testid="item-name-input" />
+              <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Nome</label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome oggetto" className="mt-1" data-testid="item-name-input" />
             </div>
-
-            {/* Category + Subcategory */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Categoria</label>
                 <Select value={category} onValueChange={(v) => { setCategory(v); setSubcategory(""); setCustomSubcategory(""); }}>
                   <SelectTrigger className="mt-1" data-testid="category-select"><SelectValue placeholder="Categoria" /></SelectTrigger>
-                  <SelectContent>
-                    {CATEGORIES.map((c) => (
-                      <SelectItem key={c.id} value={c.label}>{c.label}</SelectItem>
-                    ))}
-                  </SelectContent>
+                  <SelectContent>{CATEGORIES.map(c => <SelectItem key={c.id} value={c.label}>{c.label}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Sottocategoria / Serie</label>
+                <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Serie</label>
                 <Select value={subcategory} onValueChange={(v) => { setSubcategory(v); if (v !== CUSTOM_SUB) setCustomSubcategory(""); }}>
                   <SelectTrigger className="mt-1" data-testid="subcategory-select"><SelectValue placeholder="Serie" /></SelectTrigger>
                   <SelectContent>
-                    {(selectedCat?.subcategories || []).map((s) => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
-                    ))}
-                    <SelectItem value={CUSTOM_SUB} data-testid="subcategory-other">
-                      <span className="flex items-center gap-1"><Plus className="w-3 h-3" /> Altra serie...</span>
-                    </SelectItem>
+                    {(selectedCat?.subcategories || []).map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    <SelectItem value={CUSTOM_SUB}><Plus className="w-3 h-3 inline mr-1" />Altra serie...</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
-
-            {/* Custom subcategory input */}
             {subcategory === CUSTOM_SUB && (
-              <div>
-                <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Nome serie personalizzata</label>
-                <Input value={customSubcategory} onChange={(e) => setCustomSubcategory(e.target.value)}
-                  placeholder="Es. One Piece, Naruto Shippuden..." className="mt-1" data-testid="custom-subcategory-input" />
-              </div>
+              <Input value={customSubcategory} onChange={(e) => setCustomSubcategory(e.target.value)} placeholder="Nome serie..." className="mt-1" data-testid="custom-subcategory-input" />
             )}
-
-            {/* Tags */}
             <div>
               <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Tag</label>
-              <div className="flex flex-wrap gap-1.5 mt-1.5 mb-2">
-                {tags.map((tag) => (
+              <div className="flex flex-wrap gap-1 mt-1 mb-1.5">
+                {tags.map(tag => (
                   <Badge key={tag} variant="secondary" className="text-[10px] bg-gray-100 text-gray-600 border-0 pr-1 cursor-pointer hover:bg-gray-200" onClick={() => removeTag(tag)}>
-                    {tag} <X className="w-3 h-3 ml-1" />
+                    {tag} <X className="w-2.5 h-2.5 ml-0.5" />
                   </Badge>
                 ))}
               </div>
-              <div className="flex gap-2">
-                <Input value={tagInput} onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addTag())}
-                  placeholder="Aggiungi tag..." className="text-sm" data-testid="tag-input" />
-                <Button onClick={addTag} variant="outline" size="sm" className="px-3" data-testid="add-tag-btn"><Plus className="w-3.5 h-3.5" /></Button>
+              <div className="flex gap-1.5">
+                <Input value={tagInput} onChange={(e) => setTagInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addTag())} placeholder="Tag..." className="text-sm" data-testid="tag-input" />
+                <Button onClick={addTag} variant="outline" size="sm" className="px-2"><Plus className="w-3 h-3" /></Button>
               </div>
             </div>
-
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Valore stimato (EUR)</label>
-              <Input type="number" value={estimatedValue} onChange={(e) => setEstimatedValue(e.target.value)} placeholder="Es. 150" className="mt-1" data-testid="estimated-value-input" />
-            </div>
-
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Descrizione</label>
-              <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Descrivi il tuo oggetto..."
-                className="mt-1 w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent resize-none h-20"
-                data-testid="description-input" />
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <Button onClick={() => setStep(1)} variant="outline" className="flex-1 rounded-full" data-testid="upload-back-btn">
-                <ChevronLeft className="w-4 h-4 mr-1" /> Indietro
-              </Button>
-              <Button onClick={() => setStep(3)} disabled={!name} className="flex-1 rounded-full bg-gray-900 text-white" data-testid="upload-next-step2-btn">
-                Avanti <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
-            </div>
-          </div>
-        ) : (
-          /* STEP 3: Condition, Collection, Trade, Submit */
-          <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Valore (EUR)</label>
+                <Input type="number" value={estimatedValue} onChange={(e) => setEstimatedValue(e.target.value)} placeholder="150" className="mt-1" data-testid="estimated-value-input" />
+              </div>
               <div>
                 <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Condizione</label>
                 <Select value={condition} onValueChange={setCondition}>
                   <SelectTrigger className="mt-1" data-testid="condition-select"><SelectValue placeholder="Seleziona" /></SelectTrigger>
-                  <SelectContent>
-                    {CONDITIONS.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Tipo transazione</label>
-                <Select value={transactionType} onValueChange={setTransactionType}>
-                  <SelectTrigger className="mt-1" data-testid="transaction-type-select"><SelectValue placeholder="Tipo" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="scambio">Scambio</SelectItem>
-                    <SelectItem value="vendita">Vendita</SelectItem>
-                  </SelectContent>
+                  <SelectContent>{CONDITIONS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             </div>
-
-            {/* Collection */}
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <BarChart3 className="w-4 h-4 text-gray-500" />
-                <label className="text-[10px] uppercase tracking-wider text-gray-600 font-semibold">Collezione (opzionale)</label>
-              </div>
-              <p className="text-[11px] text-gray-500 mb-3">
-                Cataloga l'oggetto in una collezione per tracciare il completamento
-              </p>
-              <Input value={collectionName} onChange={(e) => setCollectionName(e.target.value)}
-                placeholder={`Es. ${category || "Funko Pop"} ${effectiveSubcategory || "One Piece"}`}
-                className="mb-2 bg-white" data-testid="collection-name-input" />
-              <div>
-                <label className="text-[10px] uppercase tracking-wider text-gray-500">% completamento (manuale)</label>
-                <div className="flex items-center gap-2 mt-1">
-                  <Input type="number" min="0" max="100" value={collectionPercentage}
-                    onChange={(e) => setCollectionPercentage(e.target.value)}
-                    placeholder="Es. 45" className="bg-white w-24" data-testid="collection-percentage-input" />
-                  <span className="text-sm text-gray-500">%</span>
-                  <p className="text-[10px] text-gray-400 ml-1">Lascia vuoto per calcolo automatico</p>
-                </div>
-              </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Descrizione</label>
+              <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Descrivi..."
+                className="mt-1 w-full px-3 py-2 text-sm border border-gray-200 rounded-xl resize-none h-16 focus:outline-none focus:ring-2 focus:ring-gray-900" data-testid="description-input" />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button onClick={() => setStep(1)} variant="outline" className="flex-1 rounded-full" data-testid="upload-back-btn"><ChevronLeft className="w-4 h-4 mr-1" /> Indietro</Button>
+              <Button onClick={() => setStep(3)} disabled={!name} className="flex-1 rounded-full bg-gray-900 text-white" data-testid="upload-next-step2-btn">Avanti <ChevronRight className="w-4 h-4 ml-1" /></Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Transaction type */}
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Tipo transazione</label>
+              <Select value={transactionType} onValueChange={setTransactionType}>
+                <SelectTrigger className="mt-1" data-testid="transaction-type-select"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TRANSACTION_OPTIONS.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* Desired Trade */}
-            {transactionType === "scambio" && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-                <label className="text-[10px] uppercase tracking-wider text-yellow-700 font-semibold block mb-1.5">Scambio desiderato (opzionale)</label>
-                <p className="text-[11px] text-yellow-700/70 mb-2">Specifica con cosa vorresti scambiare questo oggetto</p>
+            {/* Profile section */}
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Sezione profilo</label>
+              <Select value={profileSection} onValueChange={(v) => { setProfileSection(v); if (v === "collezione_privata") setVisibility("private"); else setVisibility("public"); }}>
+                <SelectTrigger className="mt-1" data-testid="section-select"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {SECTION_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Desired trade */}
+            {(transactionType === "scambio" || transactionType === "scambio_vendita") && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
+                <label className="text-[10px] uppercase tracking-wider text-yellow-700 font-semibold">Scambio desiderato</label>
                 <Input value={desiredTradeFor} onChange={(e) => setDesiredTradeFor(e.target.value)}
-                  placeholder="Es. Pikachu VMAX, qualsiasi carta rara Pokemon..."
-                  className="bg-white border-yellow-200 focus:ring-yellow-400" data-testid="desired-trade-input" />
+                  placeholder="Es. Pikachu VMAX, qualsiasi carta rara..." className="mt-1 bg-white border-yellow-200" data-testid="desired-trade-input" />
               </div>
             )}
 
+            {/* Collection */}
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+              <div className="flex items-center gap-2 mb-1.5">
+                <BarChart3 className="w-3.5 h-3.5 text-gray-500" />
+                <label className="text-[10px] uppercase tracking-wider text-gray-600 font-semibold">Collezione</label>
+              </div>
+              <Input value={collectionName} onChange={(e) => setCollectionName(e.target.value)}
+                placeholder={`Es. ${category || "Funko Pop"} ${effectiveSubcategory || "One Piece"}`}
+                className="mb-1.5 bg-white" data-testid="collection-name-input" />
+              <div className="flex items-center gap-2">
+                <Input type="number" min="0" max="100" value={collectionPercentage} onChange={(e) => setCollectionPercentage(e.target.value)}
+                  placeholder="%" className="bg-white w-16 h-7 text-xs" data-testid="collection-percentage-input" />
+                <span className="text-xs text-gray-500">% manuale</span>
+              </div>
+            </div>
+
             <div>
-              <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Note aggiuntive (opzionale)</label>
-              <textarea data-testid="upload-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Altre informazioni utili..."
-                className="mt-1 w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent resize-none h-16" />
+              <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Note</label>
+              <textarea data-testid="upload-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Note..."
+                className="mt-1 w-full px-3 py-2 text-sm border border-gray-200 rounded-xl resize-none h-14 focus:outline-none focus:ring-2 focus:ring-gray-900" />
             </div>
 
             {/* Summary */}
-            <div className="bg-gray-50 rounded-xl p-4 text-sm space-y-1">
-              <p className="font-medium text-gray-900">{name}</p>
-              <p className="text-gray-500 text-xs">{category}{effectiveSubcategory ? ` / ${effectiveSubcategory}` : ""} - {condition || "N/D"}</p>
-              <p className="text-gray-500 text-xs">{photos.length} foto - {transactionType}</p>
-              {collectionName && <p className="text-gray-500 text-xs">Collezione: {collectionName} {collectionPercentage ? `(${collectionPercentage}%)` : ""}</p>}
-              {desiredTradeFor && <p className="text-yellow-700 text-xs">Cerco: {desiredTradeFor}</p>}
+            <div className="bg-gray-50 rounded-xl p-3 text-xs space-y-0.5">
+              <p className="font-medium text-gray-900 text-sm">{name}</p>
+              <p className="text-gray-500">{category}{effectiveSubcategory ? ` / ${effectiveSubcategory}` : ""} - {condition || "N/D"}</p>
+              <p className="text-gray-500">{photos.length} foto - {TRANSACTION_OPTIONS.find(t => t.value === transactionType)?.label}</p>
+              <p className="text-gray-500">Sezione: {SECTION_OPTIONS.find(s => s.value === profileSection)?.label}</p>
+              {desiredTradeFor && <p className="text-yellow-700">Cerco: {desiredTradeFor}</p>}
             </div>
 
-            <div className="flex gap-3">
-              <Button onClick={() => setStep(2)} variant="outline" className="flex-1 rounded-full" data-testid="upload-back-step3-btn">
-                <ChevronLeft className="w-4 h-4 mr-1" /> Indietro
-              </Button>
+            <div className="flex gap-2">
+              <Button onClick={() => setStep(2)} variant="outline" className="flex-1 rounded-full"><ChevronLeft className="w-4 h-4 mr-1" /> Indietro</Button>
               <Button onClick={handleSubmit} disabled={submitting || !condition || !name}
                 className="flex-1 rounded-full bg-gray-900 text-white" data-testid="upload-submit-btn"
-              >
-                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Upload className="w-4 h-4 mr-1.5" /> Pubblica</>}
-              </Button>
+              >{submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Upload className="w-4 h-4 mr-1.5" /> Pubblica</>}</Button>
             </div>
           </div>
         )}
