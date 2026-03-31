@@ -376,10 +376,25 @@ async def get_my_chats(request: Request):
         {"$limit": 30}
     ]
     chats = await db.messages.aggregate(pipeline).to_list(30)
+    
+    # OPTIMIZED: Batch fetch users to avoid N+1 queries
+    other_user_ids = list(set(
+        c["recipient_id"] if c["sender_id"] == uid else c["sender_id"] 
+        for c in chats
+    ))
+    
+    # Fetch all users in ONE query
+    users_cursor = db.users.find(
+        {"user_id": {"$in": other_user_ids}},
+        {"_id": 0, "password_hash": 0}
+    )
+    users_list = await users_cursor.to_list(len(other_user_ids))
+    users_map = {u["user_id"]: u for u in users_list}
+    
     result = []
     for c in chats:
         other_id = c["recipient_id"] if c["sender_id"] == uid else c["sender_id"]
-        other_user = await db.users.find_one({"user_id": other_id}, {"_id": 0, "password_hash": 0})
+        other_user = users_map.get(other_id)
         result.append({
             "chat_key": c["_id"],
             "other_user": other_user,
@@ -423,7 +438,29 @@ async def get_items(
         sort_field, sort_order = "estimated_value", -1
     else:
         sort_field, sort_order = "created_at", -1
-    items = await db.items.find(query, {"_id": 0}).sort(sort_field, sort_order).to_list(100)
+    
+    # OPTIMIZED: Project only necessary fields for listing view
+    projection = {
+        "_id": 0,
+        "item_id": 1,
+        "name": 1,
+        "category": 1,
+        "subcategory": 1,
+        "tags": 1,
+        "condition": 1,
+        "estimated_value": 1,
+        "transaction_type": 1,
+        "images": {"$slice": 1},  # Only first image for listing
+        "owner_id": 1,
+        "owner_name": 1,
+        "owner_avatar": 1,
+        "created_at": 1,
+        "desired_trade_for": 1,
+        "community_verified": 1,
+        "flagged_fake": 1
+    }
+    
+    items = await db.items.find(query, projection).sort(sort_field, sort_order).to_list(100)
     return items
 
 # --- Search Suggestions ---
@@ -515,15 +552,31 @@ async def create_item(request: Request):
     search_terms = [item_name_lower] + item_tags + [item.get("category", "").lower(), item.get("subcategory", "").lower()]
     search_terms = [t for t in search_terms if t]
 
-    # Find wishlist items that might match
+    # OPTIMIZED: Batch fetch wishlist items to avoid N+1 queries
     all_wishlists = await db.wishlist.find({}, {"_id": 0}).to_list(500)
+    
+    # Collect unique item_ids from wishlists
+    wishlist_item_ids = list(set(wl["item_id"] for wl in all_wishlists if wl.get("item_id")))
+    
+    # Batch fetch all wishlist items in ONE query
+    wishlist_items_cursor = db.items.find(
+        {"item_id": {"$in": wishlist_item_ids}}, 
+        {"_id": 0, "item_id": 1, "name": 1, "tags": 1, "category": 1, "subcategory": 1}
+    )
+    wishlist_items_list = await wishlist_items_cursor.to_list(len(wishlist_item_ids))
+    
+    # Create lookup dict for O(1) access
+    wishlist_items_map = {item["item_id"]: item for item in wishlist_items_list}
+    
     seekers_count = 0
     for wl in all_wishlists:
         if wl["user_id"] == user["user_id"]:
             continue
-        wl_item = await db.items.find_one({"item_id": wl["item_id"]}, {"_id": 0})
+        
+        wl_item = wishlist_items_map.get(wl["item_id"])
         if not wl_item:
             continue
+            
         wl_tags = [t.lower() for t in wl_item.get("tags", [])]
         wl_name = wl_item.get("name", "").lower()
         overlap = set(search_terms) & set([wl_name] + wl_tags + [wl_item.get("category", "").lower()])
@@ -778,10 +831,22 @@ async def get_seekers_count(item_id: str):
     item_name_lower = item["name"].lower()
     item_tags = [t.lower() for t in item.get("tags", [])]
     search_terms = set([item_name_lower] + item_tags)
+    
+    # OPTIMIZED: Batch fetch wishlist items
     all_wishlists = await db.wishlist.find({}, {"_id": 0}).to_list(500)
+    wishlist_item_ids = list(set(wl["item_id"] for wl in all_wishlists if wl.get("item_id")))
+    
+    # Fetch all items in ONE query
+    wishlist_items_cursor = db.items.find(
+        {"item_id": {"$in": wishlist_item_ids}},
+        {"_id": 0, "item_id": 1, "name": 1, "tags": 1}
+    )
+    wishlist_items_list = await wishlist_items_cursor.to_list(len(wishlist_item_ids))
+    wishlist_items_map = {item["item_id"]: item for item in wishlist_items_list}
+    
     count = 0
     for wl in all_wishlists:
-        wl_item = await db.items.find_one({"item_id": wl["item_id"]}, {"_id": 0})
+        wl_item = wishlist_items_map.get(wl["item_id"])
         if not wl_item:
             continue
         wl_tags = set([t.lower() for t in wl_item.get("tags", [])] + [wl_item.get("name", "").lower()])
