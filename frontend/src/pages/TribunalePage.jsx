@@ -23,25 +23,70 @@ function VoteModal({ open, onOpenChange, tribunalCase, onVoted }) {
       alert("Seleziona prima se l'oggetto è autentico o falso");
       return;
     }
+    
+    console.log("=== INIZIO VOTO ===");
+    console.log("Item ID:", tribunalCase.item_id);
+    console.log("Voto:", vote);
+    console.log("Comment:", comment);
+    
     setSubmitting(true);
+    
     try {
+      const url = `${API}/tribunal/vote/${tribunalCase.item_id}`;
+      console.log("URL chiamata:", url);
+      
       const response = await axios.post(
-        `${API}/tribunal/vote/${tribunalCase.item_id}`, 
+        url, 
         { vote, comment }, 
-        { withCredentials: true }
+        { 
+          withCredentials: true,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
       );
-      console.log("Voto inviato con successo:", response.data);
-      alert("Voto inviato con successo! Grazie per il tuo contributo.");
-      onVoted();
-      onOpenChange(false);
+      
+      console.log("✅ Risposta server:", response.data);
+      console.log("✅ Status:", response.status);
+      
+      alert("✅ Voto inviato con successo! Grazie per il tuo contributo.");
+      
+      // Reset form
       setVote(null);
       setComment("");
+      
+      // Refresh data
+      await onVoted();
+      
+      // Close modal
+      onOpenChange(false);
+      
     } catch (err) {
-      console.error("Errore nel voto:", err);
-      const errorMsg = err.response?.data?.detail || "Errore nell'invio del voto. Riprova.";
-      alert(errorMsg);
+      console.error("❌ ERRORE COMPLETO:", err);
+      console.error("❌ Response:", err.response);
+      console.error("❌ Status:", err.response?.status);
+      console.error("❌ Data:", err.response?.data);
+      
+      let errorMsg = "Errore nell'invio del voto. ";
+      
+      if (err.response?.status === 401) {
+        errorMsg = "Devi effettuare il login per votare.";
+      } else if (err.response?.status === 403) {
+        errorMsg = err.response?.data?.detail || "Non hai i permessi per votare. Solo collezionisti Intermedi ed Esperti possono votare.";
+      } else if (err.response?.status === 400) {
+        errorMsg = err.response?.data?.detail || "Voto non valido.";
+      } else if (err.response?.status === 404) {
+        errorMsg = "Caso del tribunale non trovato.";
+      } else if (err.response?.data?.detail) {
+        errorMsg = err.response.data.detail;
+      } else if (err.message) {
+        errorMsg += err.message;
+      }
+      
+      alert("❌ " + errorMsg);
     } finally {
       setSubmitting(false);
+      console.log("=== FINE VOTO ===");
     }
   };
 

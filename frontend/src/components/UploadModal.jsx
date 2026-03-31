@@ -19,20 +19,6 @@ import axios from "axios";
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const CUSTOM_SUB = "__altra__";
 
-const TRANSACTION_OPTIONS = [
-  { value: "collezione", label: "Solo Collezione (non in vendita/scambio)" },
-  { value: "scambio", label: "Solo Scambio" },
-  { value: "vendita", label: "Solo Vendita" },
-  { value: "scambio_vendita", label: "Scambio + Vendita (valuto entrambi)" },
-];
-
-const SECTION_OPTIONS = [
-  { value: "scambio_vendita", label: "Scambio/Vendita (aperto a tutto)" },
-  { value: "scambiabili", label: "Scambiabili (solo scambio specifico)" },
-  { value: "vendita", label: "In Vendita (solo acquisto)" },
-  { value: "collezione_privata", label: "Collezione Privata" },
-];
-
 export default function UploadModal({ open, onOpenChange, onItemCreated, defaultSection }) {
   const { user } = useAuth();
   const [step, setStep] = useState(1);
@@ -51,27 +37,32 @@ export default function UploadModal({ open, onOpenChange, onItemCreated, default
   const [estimatedValue, setEstimatedValue] = useState("");
   const [condition, setCondition] = useState("");
   const [description, setDescription] = useState("");
-  const [transactionType, setTransactionType] = useState("scambio_vendita");
-  const [profileSection, setProfileSection] = useState(defaultSection || "scambio_vendita");
+  
+  // NEW: Simplified - default to collection only, private
+  const [transactionType, setTransactionType] = useState("collezione");
+  const [visibility, setVisibility] = useState("private");
   const [desiredTradeFor, setDesiredTradeFor] = useState("");
   const [notes, setNotes] = useState("");
-  const [collectionName, setCollectionName] = useState("");
+  
+  // Collection management
   const [collectionPercentage, setCollectionPercentage] = useState("");
-  const [visibility, setVisibility] = useState("public");
+  const [autoCalculatePercentage, setAutoCalculatePercentage] = useState(true);
+  
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [seekersCount, setSeekersCount] = useState(0);
+  const [showAdvanced, setShowAdvanced] = useState(false); // NEW: show/hide advanced options
 
   const resetForm = useCallback(() => {
     setStep(1); setPhotos([]); setUploading(false);
     setAiLoading(false); setAiDone(false); setAiData(null); setAiWarning("");
     setName(""); setCategory(""); setSubcategory(""); setCustomSubcategory("");
     setTags([]); setTagInput(""); setEstimatedValue(""); setCondition("");
-    setDescription(""); setTransactionType("scambio_vendita"); setDesiredTradeFor("");
-    setProfileSection(defaultSection || "scambio_vendita");
-    setNotes(""); setCollectionName(""); setCollectionPercentage("");
-    setVisibility("public"); setSubmitting(false); setDone(false); setSeekersCount(0);
-  }, [defaultSection]);
+    setDescription(""); setTransactionType("collezione"); setDesiredTradeFor("");
+    setNotes(""); setCollectionPercentage(""); setAutoCalculatePercentage(true);
+    setVisibility("private"); setSubmitting(false); setDone(false); setSeekersCount(0);
+    setShowAdvanced(false);
+  }, []);
 
   const uploadSingleFile = async (file) => {
     const formData = new FormData();
@@ -161,7 +152,7 @@ export default function UploadModal({ open, onOpenChange, onItemCreated, default
       setEstimatedValue(res.data.estimated_value ? String(res.data.estimated_value) : "");
       setCondition(res.data.condition_hint || "");
       setDescription(res.data.description || "");
-      if (res.data.subcategory) setCollectionName(`${res.data.category || ""} ${res.data.subcategory || ""}`.trim());
+      // NOTE: Collection name is now auto-generated from category + subcategory - no manual input needed
       setAiDone(true);
     } catch (err) {
       setAiDone(true); setAiWarning("Errore nel riconoscimento AI. Compila i campi manualmente.");
@@ -179,21 +170,36 @@ export default function UploadModal({ open, onOpenChange, onItemCreated, default
     setSubmitting(true);
     try {
       const imageUrls = photos.map(p => p.uploadedUrl).filter(Boolean);
+      
+      // Auto-generate collection name from category + subcategory
+      const collectionName = `${category || ""}${effectiveSubcategory ? " - " + effectiveSubcategory : ""}`.trim();
+      
       const payload = {
-        name, category, subcategory: effectiveSubcategory, tags,
+        name, 
+        category, 
+        subcategory: effectiveSubcategory, 
+        tags,
         condition: condition || "Buono",
         estimated_value: estimatedValue ? parseFloat(estimatedValue) : null,
-        transaction_type: transactionType, description: `${description}${notes ? `\n\n${notes}` : ""}`,
-        images: imageUrls, desired_trade_for: desiredTradeFor,
+        transaction_type: transactionType, 
+        description: `${description}${notes ? `\n\n${notes}` : ""}`,
+        images: imageUrls, 
+        desired_trade_for: desiredTradeFor,
         collection_name: collectionName,
         collection_percentage: collectionPercentage ? parseInt(collectionPercentage) : null,
-        profile_section: profileSection, visibility,
+        auto_calculate_percentage: autoCalculatePercentage,
+        profile_section: "collezione", // Always starts in collection
+        visibility: visibility, // Default private
       };
+      
       const res = await axios.post(`${API}/items`, payload, { withCredentials: true });
       setSeekersCount(res.data.seekers_count || 0);
       setDone(true);
       if (onItemCreated) onItemCreated();
-    } catch (err) { console.error(err); }
+    } catch (err) { 
+      console.error(err);
+      alert("Errore nel caricamento dell'oggetto. Riprova.");
+    }
     setSubmitting(false);
   };
 
@@ -203,25 +209,29 @@ export default function UploadModal({ open, onOpenChange, onItemCreated, default
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto" data-testid="upload-modal">
         <DialogHeader>
-          <DialogTitle className="font-heading text-xl">{done ? "Oggetto Caricato!" : "Carica Oggetto"}</DialogTitle>
-          <DialogDescription>{done ? "Il tuo oggetto e' ora visibile." : `Step ${step} di 3`}</DialogDescription>
+          <DialogTitle className="font-heading text-xl">{done ? "Oggetto Aggiunto!" : "Aggiungi alla Collezione"}</DialogTitle>
+          <DialogDescription>{done ? "Il tuo oggetto è ora nella tua collezione privata." : `Step ${step} di 3: ${step === 1 ? "Foto" : step === 2 ? "Dettagli" : "Opzioni"}`}</DialogDescription>
         </DialogHeader>
 
         {done ? (
           <div className="text-center py-6" data-testid="upload-success">
-            <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Check className="w-8 h-8 text-green-600" />
+            <div className="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Check className="w-8 h-8 text-purple-600" />
             </div>
-            <p className="text-sm text-gray-600 mb-3">"{name}" aggiunto con successo.</p>
+            <p className="text-sm font-semibold text-gray-900 mb-1">Oggetto aggiunto alla collezione!</p>
+            <p className="text-xs text-gray-600 mb-3">"{name}" è ora nella tua collezione {category}{effectiveSubcategory ? " - " + effectiveSubcategory : ""}</p>
             {seekersCount > 0 && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-4 text-left" data-testid="seekers-info">
                 <div className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-yellow-700" />
                   <span className="text-sm font-semibold text-yellow-800">{seekersCount} persone cercano questo oggetto!</span>
                 </div>
+                <p className="text-xs text-yellow-700 mt-1">Considera di renderlo pubblico per proposte di scambio</p>
               </div>
             )}
-            <Button onClick={handleClose} className="rounded-full bg-gray-900 text-white" data-testid="upload-done-btn">Chiudi</Button>
+            <Button onClick={handleClose} className="rounded-full bg-purple-600 hover:bg-purple-700 text-white" data-testid="upload-done-btn">
+              Vai alla Collezione
+            </Button>
           </div>
         ) : step === 1 ? (
           <div className="space-y-4">
@@ -376,41 +386,58 @@ export default function UploadModal({ open, onOpenChange, onItemCreated, default
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Transaction type */}
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Tipo transazione</label>
-              <Select value={transactionType} onValueChange={setTransactionType}>
-                <SelectTrigger className="mt-1" data-testid="transaction-type-select"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {TRANSACTION_OPTIONS.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
+            {/* Collection Info - Always visible */}
+            <div className="bg-purple-50 border-2 border-purple-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Package className="w-5 h-5 text-purple-700" />
+                <h3 className="text-sm font-semibold text-purple-900">La Tua Collezione</h3>
+              </div>
+              <div className="bg-white rounded-lg p-3 mb-3">
+                <p className="text-xs text-gray-600 mb-1">Questo oggetto verrà aggiunto a:</p>
+                <p className="text-sm font-bold text-gray-900">{category || "Non specificato"}{effectiveSubcategory ? " - " + effectiveSubcategory : ""}</p>
+              </div>
+              
+              {/* Percentage */}
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-xs text-gray-700">
+                  <Checkbox 
+                    checked={autoCalculatePercentage}
+                    onCheckedChange={setAutoCalculatePercentage}
+                    data-testid="auto-percentage-check"
+                  />
+                  Calcola automaticamente % completamento
+                </label>
+                {!autoCalculatePercentage && (
+                  <div className="flex items-center gap-2">
+                    <Input 
+                      type="number" 
+                      min="0" 
+                      max="100" 
+                      value={collectionPercentage} 
+                      onChange={(e) => setCollectionPercentage(e.target.value)}
+                      placeholder="% manuale" 
+                      className="bg-white w-20 h-8 text-sm" 
+                      data-testid="collection-percentage-input" 
+                    />
+                    <span className="text-xs text-gray-500">% di completamento collezione</span>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Profile section */}
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Sezione profilo</label>
-              <Select value={profileSection} onValueChange={(v) => { setProfileSection(v); if (v === "collezione_privata") setVisibility("private"); else setVisibility("public"); }}>
-                <SelectTrigger className="mt-1" data-testid="section-select"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {SECTION_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Visibility Toggle */}
+            {/* Visibility - Simple */}
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   {visibility === "public" ? <Globe className="w-4 h-4 text-gray-600" /> : <Lock className="w-4 h-4 text-gray-600" />}
                   <div>
-                    <label className="text-sm font-medium text-gray-900 cursor-pointer">
-                      {visibility === "public" ? "Oggetto visibile a tutti" : "Oggetto nascosto"}
+                    <label className="text-sm font-medium text-gray-900">
+                      {visibility === "public" ? "Visibile a tutti" : "Solo per me"}
                     </label>
                     <p className="text-[10px] text-gray-500">
                       {visibility === "public" 
-                        ? "Tutti possono vedere questo oggetto" 
-                        : "Solo tu puoi vedere questo oggetto nel tuo profilo"}
+                        ? "Altri collezionisti possono vedere questo oggetto" 
+                        : "Solo tu puoi vederlo nella tua collezione"}
                     </p>
                   </div>
                 </div>
@@ -422,51 +449,84 @@ export default function UploadModal({ open, onOpenChange, onItemCreated, default
               </div>
             </div>
 
-            {/* Desired trade */}
-            {(transactionType === "scambio" || transactionType === "scambio_vendita") && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
-                <label className="text-[10px] uppercase tracking-wider text-yellow-700 font-semibold">Scambio desiderato</label>
-                <Input value={desiredTradeFor} onChange={(e) => setDesiredTradeFor(e.target.value)}
-                  placeholder="Es. Pikachu VMAX, qualsiasi carta rara..." className="mt-1 bg-white border-yellow-200" data-testid="desired-trade-input" />
+            {/* Advanced Options Toggle */}
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="w-full text-left px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+              data-testid="toggle-advanced"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-700">
+                  {showAdvanced ? "Nascondi" : "Mostra"} opzioni vendita/scambio
+                </span>
+                <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${showAdvanced ? "rotate-90" : ""}`} />
+              </div>
+            </button>
+
+            {/* Advanced Options - Collapsed by default */}
+            {showAdvanced && (
+              <div className="space-y-3 border-l-2 border-yellow-400 pl-3">
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Disponibile per</label>
+                  <Select value={transactionType} onValueChange={setTransactionType}>
+                    <SelectTrigger className="mt-1" data-testid="transaction-type-select"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="collezione">Solo Collezione</SelectItem>
+                      <SelectItem value="scambio">Scambio</SelectItem>
+                      <SelectItem value="vendita">Vendita</SelectItem>
+                      <SelectItem value="scambio_vendita">Scambio + Vendita</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {(transactionType === "scambio" || transactionType === "scambio_vendita") && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                    <label className="text-[10px] uppercase tracking-wider text-yellow-700 font-semibold">Cerco in cambio</label>
+                    <Input 
+                      value={desiredTradeFor} 
+                      onChange={(e) => setDesiredTradeFor(e.target.value)}
+                      placeholder="Es. Pikachu VMAX, qualsiasi carta rara..." 
+                      className="mt-1 bg-white border-yellow-200 text-sm" 
+                      data-testid="desired-trade-input" 
+                    />
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Collection */}
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
-              <div className="flex items-center gap-2 mb-1.5">
-                <BarChart3 className="w-3.5 h-3.5 text-gray-500" />
-                <label className="text-[10px] uppercase tracking-wider text-gray-600 font-semibold">Collezione</label>
-              </div>
-              <Input value={collectionName} onChange={(e) => setCollectionName(e.target.value)}
-                placeholder={`Es. ${category || "Funko Pop"} ${effectiveSubcategory || "One Piece"}`}
-                className="mb-1.5 bg-white" data-testid="collection-name-input" />
-              <div className="flex items-center gap-2">
-                <Input type="number" min="0" max="100" value={collectionPercentage} onChange={(e) => setCollectionPercentage(e.target.value)}
-                  placeholder="%" className="bg-white w-16 h-7 text-xs" data-testid="collection-percentage-input" />
-                <span className="text-xs text-gray-500">% manuale</span>
-              </div>
-            </div>
-
             <div>
-              <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Note</label>
-              <textarea data-testid="upload-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Note..."
-                className="mt-1 w-full px-3 py-2 text-sm border border-gray-200 rounded-xl resize-none h-14 focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              <label className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Note aggiuntive</label>
+              <textarea 
+                data-testid="upload-notes" 
+                value={notes} 
+                onChange={(e) => setNotes(e.target.value)} 
+                placeholder="Aggiungi note o dettagli..."
+                className="mt-1 w-full px-3 py-2 text-sm border border-gray-200 rounded-xl resize-none h-14 focus:outline-none focus:ring-2 focus:ring-gray-900" 
+              />
             </div>
 
             {/* Summary */}
             <div className="bg-gray-50 rounded-xl p-3 text-xs space-y-0.5">
               <p className="font-medium text-gray-900 text-sm">{name}</p>
               <p className="text-gray-500">{category}{effectiveSubcategory ? ` / ${effectiveSubcategory}` : ""} - {condition || "N/D"}</p>
-              <p className="text-gray-500">{photos.length} foto - {TRANSACTION_OPTIONS.find(t => t.value === transactionType)?.label}</p>
-              <p className="text-gray-500">Sezione: {SECTION_OPTIONS.find(s => s.value === profileSection)?.label}</p>
-              {desiredTradeFor && <p className="text-yellow-700">Cerco: {desiredTradeFor}</p>}
+              <p className="text-gray-500">{photos.length} foto - {visibility === "private" ? "Privato" : "Pubblico"}</p>
+              <p className="text-gray-500">
+                Stato: {transactionType === "collezione" ? "Solo Collezione" : 
+                       transactionType === "scambio" ? "Disponibile per scambio" :
+                       transactionType === "vendita" ? "In vendita" : "Scambio + Vendita"}
+              </p>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 pt-2">
               <Button onClick={() => setStep(2)} variant="outline" className="flex-1 rounded-full"><ChevronLeft className="w-4 h-4 mr-1" /> Indietro</Button>
-              <Button onClick={handleSubmit} disabled={submitting || !condition || !name}
-                className="flex-1 rounded-full bg-gray-900 text-white" data-testid="upload-submit-btn"
-              >{submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Upload className="w-4 h-4 mr-1.5" /> Pubblica</>}</Button>
+              <Button 
+                onClick={handleSubmit} 
+                disabled={submitting || !condition || !name}
+                className="flex-1 rounded-full bg-purple-600 hover:bg-purple-700 text-white font-semibold" 
+                data-testid="upload-submit-btn"
+              >
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Package className="w-4 h-4 mr-1.5" /> Aggiungi alla Collezione</>}
+              </Button>
             </div>
           </div>
         )}
