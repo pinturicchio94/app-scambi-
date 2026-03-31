@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import ItemCard from "@/components/ItemCard";
+import CompareBar from "@/components/CompareBar";
+import CompareDrawer from "@/components/CompareDrawer";
 import { CATEGORIES, TRANSACTION_TYPES } from "@/data/mockData";
 import { Filter, X, SlidersHorizontal, ArrowUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -113,6 +115,40 @@ export default function ExplorePage() {
     transaction_type: "",
     search: searchParams.get("search") || "",
   });
+  
+  // Compare system state
+  const MAX_COMPARE_ITEMS = 5;
+  const [compareItems, setCompareItems] = useState([]);
+  const [compareDrawerOpen, setCompareDrawerOpen] = useState(false);
+
+  const toggleCompare = (item) => {
+    setCompareItems(prev => {
+      const exists = prev.find(i => i.item_id === item.item_id);
+      if (exists) {
+        return prev.filter(i => i.item_id !== item.item_id);
+      } else {
+        if (prev.length >= MAX_COMPARE_ITEMS) {
+          alert(`Puoi confrontare massimo ${MAX_COMPARE_ITEMS} oggetti alla volta`);
+          return prev;
+        }
+        return [...prev, item];
+      }
+    });
+  };
+
+  const removeCompareItem = (itemId) => {
+    setCompareItems(prev => prev.filter(i => i.item_id !== itemId));
+  };
+
+  const clearCompare = () => {
+    setCompareItems([]);
+  };
+
+  const openCompare = () => {
+    if (compareItems.length >= 2) {
+      setCompareDrawerOpen(true);
+    }
+  };
 
   useEffect(() => {
     const s = searchParams.get("search");
@@ -256,12 +292,32 @@ export default function ExplorePage() {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6" data-testid="items-grid">
               {items.map((item) => (
-                <ItemCard key={item.item_id} item={item} />
+                <ItemCard 
+                  key={item.item_id} 
+                  item={item}
+                  compareMode={true}
+                  isCompareSelected={compareItems.some(i => i.item_id === item.item_id)}
+                  onCompareToggle={() => toggleCompare(item)}
+                />
               ))}
             </div>
           )}
         </div>
       </div>
+
+      {/* Compare System */}
+      <CompareBar 
+        selectedCount={compareItems.length}
+        maxItems={MAX_COMPARE_ITEMS}
+        onCompare={openCompare}
+        onClear={clearCompare}
+      />
+      <CompareDrawer 
+        open={compareDrawerOpen}
+        onOpenChange={setCompareDrawerOpen}
+        items={compareItems}
+        onRemoveItem={removeCompareItem}
+      />
     </div>
   );
 }

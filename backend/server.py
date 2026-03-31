@@ -398,7 +398,7 @@ async def get_items(
     search: Optional[str] = None,
     sort: Optional[str] = "newest"
 ):
-    query = {}
+    query = {"visibility": {"$ne": "private"}}  # Exclude private items from public listings
     if category:
         query["category"] = category
     if subcategory:

@@ -19,16 +19,30 @@ function VoteModal({ open, onOpenChange, tribunalCase, onVoted }) {
   const [selectedImg, setSelectedImg] = useState(0);
 
   const handleVote = async () => {
-    if (!vote) return;
+    if (!vote) {
+      alert("Seleziona prima se l'oggetto è autentico o falso");
+      return;
+    }
     setSubmitting(true);
     try {
-      await axios.post(`${API}/tribunal/vote/${tribunalCase.item_id}`, { vote, comment }, { withCredentials: true });
+      const response = await axios.post(
+        `${API}/tribunal/vote/${tribunalCase.item_id}`, 
+        { vote, comment }, 
+        { withCredentials: true }
+      );
+      console.log("Voto inviato con successo:", response.data);
+      alert("Voto inviato con successo! Grazie per il tuo contributo.");
       onVoted();
       onOpenChange(false);
+      setVote(null);
+      setComment("");
     } catch (err) {
-      alert(err.response?.data?.detail || "Errore nel voto");
+      console.error("Errore nel voto:", err);
+      const errorMsg = err.response?.data?.detail || "Errore nell'invio del voto. Riprova.";
+      alert(errorMsg);
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   };
 
   if (!tribunalCase) return null;
@@ -114,9 +128,15 @@ function VoteModal({ open, onOpenChange, tribunalCase, onVoted }) {
             data-testid="vote-comment"
           />
 
-          <Button onClick={handleVote} disabled={!vote || submitting}
-            className="w-full rounded-full bg-gray-900 text-white h-11" data-testid="submit-vote-btn"
-          >{submitting ? "Invio..." : "Invia Voto"}</Button>
+          <Button 
+            onClick={handleVote} 
+            disabled={!vote || submitting}
+            className="w-full rounded-full bg-gray-900 text-white h-11 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed" 
+            data-testid="submit-vote-btn"
+            type="button"
+          >
+            {submitting ? "Invio in corso..." : vote ? "Invia Voto" : "Seleziona un voto"}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

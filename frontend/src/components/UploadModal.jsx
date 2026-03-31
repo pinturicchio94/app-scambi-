@@ -4,11 +4,12 @@ import { CATEGORIES, CONDITIONS } from "@/data/mockData";
 import {
   Upload, Sparkles, Check, ChevronRight, ChevronLeft,
   Image as ImageIcon, X, Plus, Loader2, PenLine, Users, BarChart3,
-  AlertTriangle, GripVertical
+  AlertTriangle, GripVertical, Eye, EyeOff, Lock, Globe
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
@@ -19,6 +20,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const CUSTOM_SUB = "__altra__";
 
 const TRANSACTION_OPTIONS = [
+  { value: "collezione", label: "Solo Collezione (non in vendita/scambio)" },
   { value: "scambio", label: "Solo Scambio" },
   { value: "vendita", label: "Solo Vendita" },
   { value: "scambio_vendita", label: "Scambio + Vendita (valuto entrambi)" },
@@ -394,6 +396,30 @@ export default function UploadModal({ open, onOpenChange, onItemCreated, default
                   {SECTION_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Visibility Toggle */}
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {visibility === "public" ? <Globe className="w-4 h-4 text-gray-600" /> : <Lock className="w-4 h-4 text-gray-600" />}
+                  <div>
+                    <label className="text-sm font-medium text-gray-900 cursor-pointer">
+                      {visibility === "public" ? "Oggetto visibile a tutti" : "Oggetto nascosto"}
+                    </label>
+                    <p className="text-[10px] text-gray-500">
+                      {visibility === "public" 
+                        ? "Tutti possono vedere questo oggetto" 
+                        : "Solo tu puoi vedere questo oggetto nel tuo profilo"}
+                    </p>
+                  </div>
+                </div>
+                <Switch 
+                  checked={visibility === "public"} 
+                  onCheckedChange={(checked) => setVisibility(checked ? "public" : "private")}
+                  data-testid="visibility-toggle"
+                />
+              </div>
             </div>
 
             {/* Desired trade */}

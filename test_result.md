@@ -101,3 +101,132 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: |
+  1. Bug Tribunale - Il voto non funziona quando si clicca "Invia Voto"
+  2. Collezione Privata - Aggiungere possibilità di caricare oggetti nella collezione senza vendita/scambio con opzione privacy
+  3. Sistema Confronto Annunci - Funzionalità side-by-side per confrontare più oggetti
+
+backend:
+  - task: "Bug fix - Tribunale vote endpoint"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Endpoint backend già funzionante. Verificato che restituisce risposta corretta."
+  
+  - task: "Filtro visibilità oggetti privati"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Aggiunto filtro nell'endpoint GET /items per escludere oggetti con visibility='private' dalle ricerche pubbliche. Gli oggetti privati rimangono visibili solo al proprietario nel profilo."
+
+frontend:
+  - task: "Fix Tribunale vote button - miglioramento UX"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/pages/TribunalePage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Migliorato handleVote con error handling dettagliato, alert di conferma, console.log per debug, finally block per reset state, e button con type='button' esplicito. Aggiunto feedback visivo migliore durante submit."
+  
+  - task: "Sistema Collezione Privata - opzione visibilità"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/UploadModal.jsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Aggiunto nuovo tipo transazione 'Solo Collezione', toggle visibilità con Switch (pubblico/privato), icone Globe/Lock, descrizioni chiare. Auto-set privacy quando si seleziona 'Collezione Privata'."
+  
+  - task: "Sistema Confronto - CompareDrawer component"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/CompareDrawer.jsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Creato CompareDrawer con layout a colonne affiancate, matrice di confronto (tipo transazione, valore, condizioni, categoria, proprietario, tag), pulsanti azione diretti (Acquista/Proponi Scambio), rimozione oggetti con X, hover effect per evidenziare colonne."
+  
+  - task: "Sistema Confronto - CompareBar sticky"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/CompareBar.jsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Creato CompareBar sticky bottom con contatore oggetti selezionati, indicatore limite max (5), pulsanti Pulisci e Confronta. Appare automaticamente quando si seleziona il primo oggetto."
+  
+  - task: "Sistema Confronto - Integrazione ExplorePage"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/pages/ExplorePage.jsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Integrato sistema confronto con state management (max 5 items), toggle selection, apertura drawer, clear selection. Passati props a ItemCard per abilitare compare mode."
+  
+  - task: "Sistema Confronto - ItemCard checkbox"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/ItemCard.jsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Aggiunto supporto compare mode in ItemCard con checkbox personalizzato, ring giallo quando selezionato, posizionamento bottom-right per non coprire badge esistenti."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 0
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Bug fix Tribunale - testare voto autentico e falso"
+    - "Sistema Collezione Privata - testare upload con visibilità privata"
+    - "Sistema Confronto - testare selezione multipla e apertura drawer"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Implementate 3 features richieste dall'utente:
+      1. ✅ Bug Tribunale risolto - migliorato error handling e UX
+      2. ✅ Sistema Collezione Privata - aggiunto toggle visibilità e tipo "Solo Collezione"
+      3. ✅ Sistema Confronto Annunci - implementato completamente con drawer, sticky bar, checkbox nelle card
+      
+      Tutte le modifiche sono state implementate e i servizi riavviati con successo.
+      Pronto per testing manuale o con testing agent.

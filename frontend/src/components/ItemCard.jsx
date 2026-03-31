@@ -2,12 +2,13 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowLeftRight, ShoppingCart, Heart, ShieldCheck, ShieldAlert } from "lucide-react";
 import axios from "axios";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-export default function ItemCard({ item }) {
+export default function ItemCard({ item, compareMode = false, isCompareSelected = false, onCompareToggle }) {
   const { user } = useAuth();
   const [wishlisted, setWishlisted] = useState(false);
   const [wishlistLoading, setWishlistLoading] = useState(false);
@@ -32,8 +33,16 @@ export default function ItemCard({ item }) {
     setWishlistLoading(false);
   };
 
+  const handleCompareClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onCompareToggle) {
+      onCompareToggle();
+    }
+  };
+
   return (
-    <div className="group flex flex-col gap-3 relative" data-testid={`item-card-${item.item_id}`}>
+    <div className={`group flex flex-col gap-3 relative ${isCompareSelected ? 'ring-2 ring-yellow-400 rounded-xl' : ''}`} data-testid={`item-card-${item.item_id}`}>
       <Link to={`/oggetto/${item.item_id}`} className="flex flex-col gap-3 cursor-pointer">
         {/* Image */}
         <div className="aspect-square rounded-xl overflow-hidden bg-gray-50 relative border border-gray-100">
@@ -60,6 +69,27 @@ export default function ItemCard({ item }) {
               )}
             </Badge>
           </div>
+
+          {/* Compare Checkbox */}
+          {compareMode && (
+            <div 
+              className="absolute bottom-3 right-3 z-20"
+              onClick={handleCompareClick}
+            >
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+                isCompareSelected 
+                  ? 'bg-yellow-400 shadow-lg' 
+                  : 'bg-white/90 backdrop-blur-sm hover:bg-yellow-50'
+              }`}>
+                <Checkbox 
+                  checked={isCompareSelected}
+                  onCheckedChange={handleCompareClick}
+                  data-testid={`compare-checkbox-${item.item_id}`}
+                  className="pointer-events-none border-2 border-gray-700 data-[state=checked]:bg-yellow-400 data-[state=checked]:border-yellow-400"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Community Verified Badge */}
           {item.community_verified && (
