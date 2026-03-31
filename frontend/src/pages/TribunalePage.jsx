@@ -148,17 +148,31 @@ function VoteModal({ open, onOpenChange, tribunalCase, onVoted }) {
 
           {/* Vote buttons */}
           <div className="grid grid-cols-2 gap-3">
-            <button onClick={() => setVote("authentic")}
-              className={`p-4 rounded-xl border-2 transition-all text-center ${vote === "authentic" ? "border-green-500 bg-green-50" : "border-gray-200 hover:border-green-300"}`}
+            <button 
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log("🔵 Click AUTENTICO");
+                setVote("authentic");
+              }}
+              className={`p-4 rounded-xl border-2 transition-all text-center cursor-pointer ${vote === "authentic" ? "border-green-500 bg-green-50" : "border-gray-200 hover:border-green-300"}`}
               data-testid="vote-authentic-btn"
+              type="button"
             >
               <ShieldCheck className="w-8 h-8 mx-auto mb-2 text-green-600" />
               <p className="text-sm font-semibold text-green-800">Autentico</p>
               <p className="text-[10px] text-green-600 mt-1">Sembra originale</p>
             </button>
-            <button onClick={() => setVote("fake")}
-              className={`p-4 rounded-xl border-2 transition-all text-center ${vote === "fake" ? "border-red-500 bg-red-50" : "border-gray-200 hover:border-red-300"}`}
+            <button 
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log("🔴 Click FALSO");
+                setVote("fake");
+              }}
+              className={`p-4 rounded-xl border-2 transition-all text-center cursor-pointer ${vote === "fake" ? "border-red-500 bg-red-50" : "border-gray-200 hover:border-red-300"}`}
               data-testid="vote-fake-btn"
+              type="button"
             >
               <ShieldAlert className="w-8 h-8 mx-auto mb-2 text-red-500" />
               <p className="text-sm font-semibold text-red-800">Sospetto Falso</p>
@@ -173,15 +187,19 @@ function VoteModal({ open, onOpenChange, tribunalCase, onVoted }) {
             data-testid="vote-comment"
           />
 
-          <Button 
-            onClick={handleVote} 
+          <button 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleVote();
+            }} 
             disabled={!vote || submitting}
-            className="w-full rounded-full bg-gray-900 text-white h-11 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed" 
+            className="w-full rounded-full bg-gray-900 text-white h-11 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors"
             data-testid="submit-vote-btn"
             type="button"
           >
-            {submitting ? "Invio in corso..." : vote ? "Invia Voto" : "Seleziona un voto"}
-          </Button>
+            {submitting ? "⏳ Invio in corso..." : vote ? "✅ Invia Voto" : "⚠️ Seleziona un voto"}
+          </button>
         </div>
       </DialogContent>
     </Dialog>
