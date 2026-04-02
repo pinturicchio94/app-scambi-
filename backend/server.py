@@ -491,6 +491,12 @@ async def get_item(item_id: str):
 async def create_item(request: Request):
     user = await get_current_user(request)
     body = await request.json()
+    
+    print(f"📤 [Upload] User {user.get('user_id')} ({user.get('name')}) uploading item")
+    print(f"📤 [Upload] Item name: {body.get('name')}")
+    print(f"📤 [Upload] Collection name: '{body.get('collection_name')}'")
+    print(f"📤 [Upload] Category: {body.get('category')}, Subcategory: {body.get('subcategory')}")
+    
     item_id = f"item_{uuid.uuid4().hex[:12]}"
     item = {
         "item_id": item_id,
@@ -522,7 +528,10 @@ async def create_item(request: Request):
         "owner_avatar": user.get("picture", ""),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.items.insert_one(item)
+    
+    result = await db.items.insert_one(item)
+    print(f"✅ [Upload] Item saved with ID: {item_id}, MongoDB ID: {result.inserted_id}")
+    print(f"✅ [Upload] Owner ID: {user['user_id']}")
 
     # Auto-catalog into collection if collection_name provided
     coll_name = body.get("collection_name", "")
@@ -837,11 +846,18 @@ async def get_user_collections_grouped(request: Request):
     """Get user's items grouped by collection_name with stats"""
     user = await get_current_user(request)
     
+    print(f"🔍 [Collections] User requesting: {user.get('user_id')} ({user.get('name')})")
+    
     # Fetch all user's collection items
     items = await db.items.find(
         {"owner_id": user["user_id"]},
         {"_id": 0}
     ).to_list(1000)
+    
+    print(f"📦 [Collections] Found {len(items)} items for user {user.get('user_id')}")
+    
+    if len(items) > 0:
+        print(f"📦 [Collections] Sample item: {items[0].get('name')} - collection_name: '{items[0].get('collection_name')}'")
     
     # Group by collection_name
     collections_dict = {}
@@ -869,6 +885,8 @@ async def get_user_collections_grouped(request: Request):
     
     # Sort by item count desc
     collections.sort(key=lambda x: x["item_count"], reverse=True)
+    
+    print(f"✅ [Collections] Returning {len(collections)} collections")
     
     return collections
 
