@@ -493,15 +493,23 @@ async def get_item(item_id: str):
 
 @api_router.post("/items")
 async def create_item(request: Request):
-    user = await get_current_user(request)
-    body = await request.json()
+    logger.info("📤 ===== CREATE ITEM CALLED =====")
+    try:
+        user = await get_current_user(request)
+        logger.info(f"📤 [Upload] User: {user.get('user_id')} - {user.get('name')}")
+    except Exception as e:
+        logger.error(f"❌ [Upload] Auth failed: {e}")
+        raise
     
-    print(f"📤 [Upload] User {user.get('user_id')} ({user.get('name')}) uploading item")
-    print(f"📤 [Upload] Item name: {body.get('name')}")
-    print(f"📤 [Upload] Collection name: '{body.get('collection_name')}'")
-    print(f"📤 [Upload] Category: {body.get('category')}, Subcategory: {body.get('subcategory')}")
+    try:
+        body = await request.json()
+        logger.info(f"📤 [Upload] Body received: name={body.get('name')}, category={body.get('category')}")
+    except Exception as e:
+        logger.error(f"❌ [Upload] JSON parse failed: {e}")
+        raise
     
     item_id = f"item_{uuid.uuid4().hex[:12]}"
+    logger.info(f"📤 [Upload] Generated item_id: {item_id}")
     item = {
         "item_id": item_id,
         "name": body.get("name", ""),
@@ -533,9 +541,13 @@ async def create_item(request: Request):
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
-    result = await db.items.insert_one(item)
-    print(f"✅ [Upload] Item saved with ID: {item_id}, MongoDB ID: {result.inserted_id}")
-    print(f"✅ [Upload] Owner ID: {user['user_id']}")
+    try:
+        result = await db.items.insert_one(item)
+        logger.info(f"✅ [Upload] Item SAVED! ID: {item_id}, Mongo ID: {result.inserted_id}")
+        logger.info(f"✅ [Upload] Owner ID: {user['user_id']}, Collection: '{body.get('collection_name')}'")
+    except Exception as e:
+        logger.error(f"❌ [Upload] DB INSERT FAILED: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save item: {str(e)}")
 
     # Auto-catalog into collection if collection_name provided
     coll_name = body.get("collection_name", "")
