@@ -1,8 +1,7 @@
-import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import YellowPecoraMascot from "@/components/YellowPecoraMascot";
-import { Search, Plus, User, LogOut, Package, Heart, Home, Bell, MessageCircle, Shield } from "lucide-react";
+import { Plus, User, LogOut, Package, Heart, Home, Bell, MessageCircle, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -10,54 +9,11 @@ import {
   DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import axios from "axios";
-
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export default function Navbar({ onUploadClick, onLoginClick, onChatClick, onLogout, notifications = [], onNotificationsClear }) {
   const { user } = useAuth();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [suggestions, setSuggestions] = useState([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const searchRef = useRef(null);
   const navigate = useNavigate();
   const unreadCount = notifications.filter(n => !n.read).length;
-
-  // Search autocomplete
-  useEffect(() => {
-    if (searchQuery.length < 2) { setSuggestions([]); return; }
-    const timeout = setTimeout(async () => {
-      try {
-        const res = await axios.get(`${API}/search/suggestions?q=${encodeURIComponent(searchQuery)}`);
-        setSuggestions(res.data);
-        setShowSuggestions(true);
-      } catch { setSuggestions([]); }
-    }, 300);
-    return () => clearTimeout(timeout);
-  }, [searchQuery]);
-
-  // Close suggestions on click outside
-  useEffect(() => {
-    const handleClick = (e) => {
-      if (searchRef.current && !searchRef.current.contains(e.target)) setShowSuggestions(false);
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      setShowSuggestions(false);
-      navigate(`/esplora?search=${encodeURIComponent(searchQuery.trim())}`);
-    }
-  };
-
-  const selectSuggestion = (item) => {
-    setShowSuggestions(false);
-    setSearchQuery("");
-    navigate(`/oggetto/${item.item_id}`);
-  };
 
   return (
     <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-gray-100" data-testid="navbar">
@@ -88,45 +44,8 @@ export default function Navbar({ onUploadClick, onLoginClick, onChatClick, onLog
             </Link>
           </div>
 
-          {/* Center: Search Bar with Autocomplete */}
-          <div ref={searchRef} className="flex-1 max-w-lg relative">
-            <form onSubmit={handleSearch}>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  data-testid="search-input"
-                  type="text"
-                  placeholder="Completa la collezione..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
-                  className="w-full pl-10 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all placeholder:text-gray-400"
-                />
-              </div>
-            </form>
-            {/* Suggestions Dropdown */}
-            {showSuggestions && suggestions.length > 0 && (
-              <div className="absolute top-full mt-1.5 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50" data-testid="search-suggestions">
-                {suggestions.map((item) => (
-                  <button key={item.item_id} onClick={() => selectSuggestion(item)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 transition-colors text-left"
-                    data-testid={`suggestion-${item.item_id}`}
-                  >
-                    {item.images?.[0] && (
-                      <img src={item.images[0]} alt="" className="w-8 h-8 rounded-md object-cover flex-shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-900 truncate">{item.name}</p>
-                      <p className="text-[10px] text-gray-400">{item.category}{item.subcategory ? ` / ${item.subcategory}` : ""}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
           {/* Right: Actions */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 ml-auto">
             {user && (
               <Button data-testid="upload-button" onClick={onUploadClick}
                 className="rounded-full bg-gray-900 text-white hover:bg-gray-800 text-xs px-3 h-8" size="sm"
