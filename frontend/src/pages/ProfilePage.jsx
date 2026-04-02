@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import ItemCard from "@/components/ItemCard";
 import {
   Award, Shield, ArrowLeftRight, Star, Trophy, PenLine, Check,
-  Eye, EyeOff, Plus, MessageCircle, Clock
+  Eye, EyeOff, Plus, MessageCircle, Clock, Package
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
