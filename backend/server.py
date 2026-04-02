@@ -16,6 +16,10 @@ from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 
+# Setup logger
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -846,18 +850,29 @@ async def get_user_collections_grouped(request: Request):
     """Get user's items grouped by collection_name with stats"""
     user = await get_current_user(request)
     
-    print(f"🔍 [Collections] User requesting: {user.get('user_id')} ({user.get('name')})")
+    logger.info(f"🔍 [Collections] User requesting: {user.get('user_id')} ({user.get('name')})")
+    logger.info(f"🔍 [Collections] User ID type: {type(user.get('user_id'))}")
+    logger.info(f"🔍 [Collections] User ID value: '{user.get('user_id')}'")
     
     # Fetch all user's collection items
-    items = await db.items.find(
-        {"owner_id": user["user_id"]},
-        {"_id": 0}
-    ).to_list(1000)
+    query = {"owner_id": user["user_id"]}
+    logger.info(f"🔍 [Collections] Query: {query}")
     
-    print(f"📦 [Collections] Found {len(items)} items for user {user.get('user_id')}")
+    items = await db.items.find(query, {"_id": 0}).to_list(1000)
+    
+    logger.info(f"📦 [Collections] Found {len(items)} items for user {user.get('user_id')}")
     
     if len(items) > 0:
-        print(f"📦 [Collections] Sample item: {items[0].get('name')} - collection_name: '{items[0].get('collection_name')}'")
+        logger.info(f"📦 [Collections] Sample item: {items[0].get('name')} - collection_name: '{items[0].get('collection_name')}'")
+    else:
+        # DEBUG: Check if items exist with any owner_id
+        all_items_count = await db.items.count_documents({})
+        logger.warning(f"⚠️  [Collections] Total items in DB: {all_items_count}")
+        if all_items_count > 0:
+            sample = await db.items.find_one({})
+            logger.warning(f"⚠️  [Collections] Sample item owner_id: '{sample.get('owner_id')}' (type: {type(sample.get('owner_id'))})")
+            logger.warning(f"⚠️  [Collections] Query owner_id: '{user['user_id']}' (type: {type(user['user_id'])})")
+            logger.warning(f"⚠️  [Collections] Match: {sample.get('owner_id') == user['user_id']}")
     
     # Group by collection_name
     collections_dict = {}
@@ -886,7 +901,7 @@ async def get_user_collections_grouped(request: Request):
     # Sort by item count desc
     collections.sort(key=lambda x: x["item_count"], reverse=True)
     
-    print(f"✅ [Collections] Returning {len(collections)} collections")
+    logger.info(f"✅ [Collections] Returning {len(collections)} collections")
     
     return collections
 
