@@ -4,12 +4,13 @@ import { CATEGORIES, CONDITIONS } from "@/data/mockData";
 import {
   Upload, Sparkles, Check, ChevronRight, ChevronLeft,
   Image as ImageIcon, X, Plus, Loader2, PenLine, Users, BarChart3,
-  AlertTriangle, GripVertical, Eye, EyeOff, Lock, Globe
+  AlertTriangle, GripVertical, Eye, EyeOff, Lock, Globe, Package
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
