@@ -35,9 +35,14 @@ export default function CollectionsPage() {
   const fetchCollections = async () => {
     try {
       const res = await axios.get(`${API}/collections/grouped`, { withCredentials: true });
+      console.log("📦 Collections API Response:", res.data);
+      console.log("📦 Total collections:", res.data.length);
+      res.data.forEach((coll, idx) => {
+        console.log(`  Collection ${idx + 1}:`, coll.collection_name, `(${coll.item_count} items)`);
+      });
       setCollections(res.data);
     } catch (err) {
-      console.error("Error fetching collections:", err);
+      console.error("❌ Error fetching collections:", err);
     }
     setLoading(false);
   };
@@ -50,16 +55,21 @@ export default function CollectionsPage() {
       allItems = [...allItems, ...coll.items];
     });
 
+    console.log("🔍 Total items before filters:", allItems.length);
+
     // Filter by collection
     if (selectedCollection !== "all") {
       allItems = allItems.filter(item => item.collection_name === selectedCollection);
+      console.log(`🔍 After collection filter (${selectedCollection}):`, allItems.length);
     }
 
     // Filter by category type
     if (filterCategory === "sealed") {
       allItems = allItems.filter(item => item.sealed);
+      console.log("🔍 After sealed filter:", allItems.length);
     } else if (filterCategory !== "all") {
       allItems = allItems.filter(item => item.category === filterCategory);
+      console.log(`🔍 After category filter (${filterCategory}):`, allItems.length);
     }
 
     // Search filter
@@ -69,6 +79,7 @@ export default function CollectionsPage() {
         item.name.toLowerCase().includes(q) ||
         item.tags?.some(tag => tag.toLowerCase().includes(q))
       );
+      console.log(`🔍 After search filter (${searchQuery}):`, allItems.length);
     }
 
     // Sort
@@ -86,6 +97,7 @@ export default function CollectionsPage() {
       allItems.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     }
 
+    console.log("✅ Final filtered items:", allItems.length);
     setFilteredItems(allItems);
   };
 
