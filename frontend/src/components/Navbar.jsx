@@ -78,6 +78,11 @@ export default function Navbar({ onUploadClick, onLoginClick, onChatClick, onLog
             <Link to="/esplora" className="hidden md:block text-sm text-gray-500 hover:text-gray-900 transition-colors" data-testid="nav-explore">
               Esplora
             </Link>
+            {user && (
+              <Link to="/collezioni" className="hidden md:flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition-colors" data-testid="nav-collections">
+                <Package className="w-3.5 h-3.5" /> Collezioni
+              </Link>
+            )}
             <Link to="/tribunale" className="hidden md:flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition-colors" data-testid="nav-tribunale">
               <Shield className="w-3.5 h-3.5" /> L'Oracolo
             </Link>

@@ -506,8 +506,17 @@ async def create_item(request: Request):
         "desired_trade_for": body.get("desired_trade_for", ""),
         "collection_name": body.get("collection_name", ""),
         "collection_percentage": body.get("collection_percentage"),
+        "auto_calculate_percentage": body.get("auto_calculate_percentage", True),
         "visibility": body.get("visibility", "public"),
         "profile_section": body.get("profile_section", "scambio_vendita"),
+        # NEW: Sealed status
+        "sealed": body.get("sealed", False),
+        # NEW: Purchase info
+        "purchase_info": {
+            "store": body.get("purchase_store", ""),
+            "date": body.get("purchase_date", ""),
+            "price": body.get("purchase_price", None)
+        },
         "owner_id": user["user_id"],
         "owner_name": user.get("name", ""),
         "owner_avatar": user.get("picture", ""),
@@ -821,6 +830,47 @@ async def update_collection(request: Request, collection_id: str):
         )
     updated = await db.collections.find_one({"collection_id": collection_id}, {"_id": 0})
     return updated
+
+# --- Get User Collections with Items Grouped ---
+@api_router.get("/collections/grouped")
+async def get_user_collections_grouped(request: Request):
+    """Get user's items grouped by collection_name with stats"""
+    user = await get_current_user(request)
+    
+    # Fetch all user's collection items
+    items = await db.items.find(
+        {"owner_id": user["user_id"]},
+        {"_id": 0}
+    ).to_list(1000)
+    
+    # Group by collection_name
+    collections_dict = {}
+    for item in items:
+        coll_name = item.get("collection_name") or "Senza Collezione"
+        if coll_name not in collections_dict:
+            collections_dict[coll_name] = {
+                "collection_name": coll_name,
+                "items": [],
+                "total_value": 0,
+                "sealed_count": 0,
+                "percentage": item.get("collection_percentage", 0)
+            }
+        collections_dict[coll_name]["items"].append(item)
+        if item.get("estimated_value"):
+            collections_dict[coll_name]["total_value"] += item.get("estimated_value", 0)
+        if item.get("sealed"):
+            collections_dict[coll_name]["sealed_count"] += 1
+    
+    # Convert to list and add item count
+    collections = []
+    for coll_name, coll_data in collections_dict.items():
+        coll_data["item_count"] = len(coll_data["items"])
+        collections.append(coll_data)
+    
+    # Sort by item count desc
+    collections.sort(key=lambda x: x["item_count"], reverse=True)
+    
+    return collections
 
 # --- Match/Seekers Count Endpoint ---
 @api_router.get("/items/{item_id}/seekers")

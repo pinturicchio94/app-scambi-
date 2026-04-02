@@ -11,6 +11,7 @@ import ExplorePage from "@/pages/ExplorePage";
 import ItemDetailPage from "@/pages/ItemDetailPage";
 import ProfilePage from "@/pages/ProfilePage";
 import TribunalePage from "@/pages/TribunalePage";
+import CollectionsPage from "@/pages/CollectionsPage";
 import axios from "axios";
 import "@/App.css";
 
@@ -66,6 +67,7 @@ function AppRouter() {
           <Route path="/oggetto/:id" element={<ItemDetailPage />} />
           <Route path="/profilo/:userId" element={<ProfilePage />} />
           <Route path="/tribunale" element={<TribunalePage />} />
+          <Route path="/collezioni" element={<CollectionsPage />} />
         </Routes>
       </main>
       <UploadModal open={uploadOpen} onOpenChange={setUploadOpen} onItemCreated={fetchNotifications} />
