@@ -213,15 +213,26 @@ export default function TribunalePage() {
   const [loading, setLoading] = useState(true);
   const [voteModal, setVoteModal] = useState(false);
   const [selectedCase, setSelectedCase] = useState(null);
+  const [eligibility, setEligibility] = useState(null);
 
   const fetchData = async () => {
     try {
-      const [casesRes, statsRes] = await Promise.all([
-        user ? axios.get(`${API}/tribunal/pending`, { withCredentials: true }) : Promise.resolve({ data: [] }),
-        axios.get(`${API}/tribunal/stats`)
-      ]);
-      setCases(casesRes.data);
-      setStats(statsRes.data);
+      const requests = [axios.get(`${API}/tribunal/stats`)];
+      
+      if (user) {
+        requests.push(
+          axios.get(`${API}/tribunal/pending`, { withCredentials: true }),
+          axios.get(`${API}/tribunal/check-eligibility`, { withCredentials: true })
+        );
+      }
+      
+      const responses = await Promise.all(requests);
+      setStats(responses[0].data);
+      
+      if (user) {
+        setCases(responses[1].data);
+        setEligibility(responses[2].data);
+      }
     } catch {}
     setLoading(false);
   };
@@ -229,6 +240,10 @@ export default function TribunalePage() {
   useEffect(() => { fetchData(); }, [user]);
 
   const openVote = (c) => {
+    if (!eligibility?.eligible) {
+      alert("⚠️ Non hai ancora i requisiti per votare nel Tribunale. Leggi il banner sopra per sapere come sbloccare questa funzione.");
+      return;
+    }
     setSelectedCase(c);
     setVoteModal(true);
   };
@@ -252,6 +267,61 @@ export default function TribunalePage() {
         </p>
       </div>
 
+      {/* Eligibility Banner */}
+      {user && eligibility && !eligibility.eligible && (
+        <div className="mb-6 bg-gradient-to-r from-amber-50 to-yellow-50 border-2 border-yellow-200 rounded-xl p-4" data-testid="eligibility-banner">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <AlertTriangle className="w-5 h-5 text-yellow-700" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-gray-900 mb-1">Non puoi ancora votare nel Tribunale</h3>
+              <p className="text-xs text-gray-700 mb-2">
+                Per garantire la qualità delle verifiche, solo i collezionisti con esperienza possono votare.
+              </p>
+              <div className="bg-white rounded-lg p-3 mb-2">
+                <p className="text-xs text-gray-600 mb-2"><strong>Il tuo stato attuale:</strong></p>
+                <div className="flex items-center gap-2 text-xs">
+                  <Badge className="bg-gray-100 text-gray-700 border-0">
+                    Livello: {eligibility.user_level}
+                  </Badge>
+                  <Badge className="bg-gray-100 text-gray-700 border-0">
+                    Recensioni: {eligibility.rating_count}/3
+                  </Badge>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-yellow-800">Come sbloccare il voto:</p>
+                <ul className="text-xs text-gray-600 space-y-0.5 ml-3">
+                  <li className="flex items-start gap-1">
+                    <span className="text-yellow-600">•</span>
+                    <span><strong>Opzione 1:</strong> Completa scambi e ricevi recensioni positive (servono 3 recensioni)</span>
+                  </li>
+                  <li className="flex items-start gap-1">
+                    <span className="text-yellow-600">•</span>
+                    <span><strong>Opzione 2:</strong> Aumenta il tuo livello a "Intermedio" o "Esperto" tramite attività sulla piattaforma</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {user && eligibility && eligibility.eligible && (
+        <div className="mb-6 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-4" data-testid="eligible-banner">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+              <ShieldCheck className="w-5 h-5 text-green-700" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-green-900">Sei un Saggio del Tribunale!</h3>
+              <p className="text-xs text-green-700">Puoi votare ed aiutare la community a identificare oggetti autentici.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
         {[
@@ -266,21 +336,6 @@ export default function TribunalePage() {
           </div>
         ))}
       </div>
-
-      {/* Eligibility Notice */}
-      {user && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
-          <div className="flex items-center gap-2 mb-1">
-            <Shield className="w-4 h-4 text-yellow-700" />
-            <span className="text-sm font-semibold text-yellow-900">Il tuo ruolo</span>
-          </div>
-          <p className="text-xs text-yellow-800">
-            {user.level === "Collezionista Esperto" || user.level === "Collezionista Intermedio"
-              ? "Sei un Saggio! Puoi votare sugli oggetti segnalati."
-              : "Diventa Collezionista Intermedio o Esperto per votare nel Tribunale. Continua a scambiare e ricevere valutazioni!"}
-          </p>
-        </div>
-      )}
 
       {!user && (
         <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center mb-6">
@@ -328,8 +383,24 @@ export default function TribunalePage() {
                     <Badge className="text-[10px] bg-gray-100 text-gray-500">Votato</Badge>
                   ) : c.is_own_item ? (
                     <Badge className="text-[10px] bg-gray-100 text-gray-500">Tuo oggetto</Badge>
+                  ) : !eligibility?.eligible ? (
+                    <Button 
+                      onClick={() => openVote(c)} 
+                      size="sm" 
+                      disabled
+                      className="rounded-full bg-gray-300 text-gray-500 text-xs h-8 px-3 cursor-not-allowed" 
+                      data-testid={`vote-case-${c.tribunal_id}`}
+                      title="Devi essere almeno Intermedio o avere 3 recensioni per votare"
+                    >
+                      🔒 Bloccato
+                    </Button>
                   ) : (
-                    <Button onClick={() => openVote(c)} size="sm" className="rounded-full bg-gray-900 text-white text-xs h-8 px-3" data-testid={`vote-case-${c.tribunal_id}`}>
+                    <Button 
+                      onClick={() => openVote(c)} 
+                      size="sm" 
+                      className="rounded-full bg-gray-900 text-white text-xs h-8 px-3 hover:bg-gray-800" 
+                      data-testid={`vote-case-${c.tribunal_id}`}
+                    >
                       Esamina <ChevronRight className="w-3 h-3 ml-1" />
                     </Button>
                   )}

@@ -1134,6 +1134,25 @@ TRIBUNAL_QUORUM = 3  # Votes needed to decide
 TRIBUNAL_ELIGIBLE_LEVELS = ["Collezionista Esperto", "Collezionista Intermedio"]
 HIGH_VALUE_THRESHOLD = 200  # Auto-submit items above this value
 
+@api_router.get("/tribunal/check-eligibility")
+async def check_tribunal_eligibility(request: Request):
+    """Check if current user can vote in tribunal"""
+    user = await get_current_user(request)
+    user_level = user.get("level", "Principiante")
+    rating_count = await db.ratings.count_documents({"rated_user_id": user["user_id"]})
+    is_eligible = user_level in TRIBUNAL_ELIGIBLE_LEVELS or rating_count >= 3
+    
+    return {
+        "eligible": is_eligible,
+        "user_level": user_level,
+        "rating_count": rating_count,
+        "required_level": "Intermedio o Esperto",
+        "required_ratings": 3,
+        "reason": "Hai il livello richiesto" if user_level in TRIBUNAL_ELIGIBLE_LEVELS else 
+                  f"Hai {rating_count}/3 recensioni" if rating_count > 0 else
+                  "Devi essere almeno Intermedio o avere 3 recensioni"
+    }
+
 @api_router.post("/tribunal/report")
 async def report_item_for_tribunal(request: Request):
     user = await get_current_user(request)
@@ -1202,7 +1221,10 @@ async def vote_on_tribunal(request: Request, item_id: str):
     rating_count = await db.ratings.count_documents({"rated_user_id": user["user_id"]})
     is_eligible = user_level in TRIBUNAL_ELIGIBLE_LEVELS or rating_count >= 3
     if not is_eligible:
-        raise HTTPException(status_code=403, detail="Solo i Garanti (collezionisti esperti) possono votare nel Tribunale")
+        raise HTTPException(
+            status_code=403, 
+            detail=f"Per votare nel Tribunale devi essere almeno 'Intermedio' o avere 3+ recensioni. Il tuo livello: {user_level}, Recensioni: {rating_count}/3"
+        )
     body = await request.json()
     vote = body.get("vote")  # "authentic" or "fake"
     comment = body.get("comment", "")
