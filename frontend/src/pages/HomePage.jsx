@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import ItemCard from "@/components/ItemCard";
 import YellowPecoraMascot from "@/components/YellowPecoraMascot";
 import { MOCK_USERS } from "@/data/mockData";
-import { ArrowRight, Sparkles, ArrowLeftRight, MapPin, TrendingUp, Clock } from "lucide-react";
+import { ArrowRight, Sparkles, ArrowLeftRight, MapPin, TrendingUp, Clock, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import axios from "axios";
@@ -64,6 +64,7 @@ export default function HomePage() {
   const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     const fetchItems = async () => {
@@ -86,65 +87,76 @@ export default function HomePage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8" data-testid="home-page">
-      {/* Yellow Pecora Banner */}
-      <section className="mt-6 sm:mt-10" data-testid="yellow-pecora-banner">
-        <div className="bg-yellow-400 rounded-2xl p-6 sm:p-10 flex flex-col sm:flex-row items-center justify-between gap-6 overflow-hidden relative">
+      {/* Standalone Search Bar */}
+      <section className="mt-6 sm:mt-8 mb-6" data-testid="homepage-search">
+        <div className="max-w-2xl mx-auto">
+          <form onSubmit={(e) => { e.preventDefault(); if (searchQuery.trim()) window.location.href = `/esplora?search=${encodeURIComponent(searchQuery)}`; }}>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Cerca nella collezione: Funko, Pokemon, Carte..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full px-5 py-4 pr-32 text-sm border-2 border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent shadow-sm"
+                data-testid="homepage-search-input"
+              />
+              <Button 
+                type="submit"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-yellow-400 hover:bg-yellow-500 text-yellow-900 font-semibold px-6 h-10"
+                data-testid="homepage-search-btn"
+              >
+                Cerca
+              </Button>
+            </div>
+          </form>
+          <p className="text-xs text-gray-400 text-center mt-2">🔍 Trova il tuo prossimo pezzo da collezione</p>
+        </div>
+      </section>
+
+      {/* Yellow Pecora Banner - RIDIMENSIONATA */}
+      <section className="mt-6" data-testid="yellow-pecora-banner">
+        <div className="bg-yellow-400 rounded-2xl p-4 sm:p-6 flex items-center justify-between gap-4 overflow-hidden relative">
           <div className="flex-1 z-10">
-            <div className="flex items-center gap-2 mb-3">
-              <Sparkles className="w-5 h-5 text-yellow-800" />
-              <span className="text-xs font-bold uppercase tracking-wider text-yellow-800">Oggetto del Giorno</span>
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="w-4 h-4 text-yellow-800" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-yellow-800">Proposta del Giorno</span>
             </div>
             {dailyItem ? (
               <>
-                <h1 className="text-2xl sm:text-3xl font-heading font-bold text-gray-900 mb-2">
+                <h2 className="text-lg sm:text-xl font-heading font-bold text-gray-900 mb-1 line-clamp-1">
                   {dailyItem.name}
-                </h1>
-                <p className="text-sm text-yellow-900/70 mb-4 max-w-md">
-                  Consigliato dalla Yellow Pecora! Questo oggetto ha un alto potenziale di scambio.
+                </h2>
+                <p className="text-xs text-yellow-900/70 mb-3 line-clamp-2 max-w-md">
+                  Consigliato dalla Yellow Pecora! Alto potenziale di scambio.
                 </p>
-                <div className="flex flex-wrap gap-2 mb-5">
-                  {dailyItem.tags?.slice(0, 3).map((tag) => (
-                    <Badge key={tag} className="bg-yellow-500/30 text-yellow-900 border-yellow-500/50 text-[10px]">
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
-                <div className="flex gap-3">
+                <div className="flex gap-2">
                   <Link to={`/oggetto/${dailyItem.item_id}`}>
-                    <Button className="rounded-full bg-gray-900 text-white hover:bg-gray-800 text-sm px-6" data-testid="daily-item-cta">
-                      <ArrowLeftRight className="w-4 h-4 mr-1.5" /> Proponi Scambio
-                    </Button>
-                  </Link>
-                  <Link to="/esplora">
-                    <Button variant="outline" className="rounded-full border-yellow-600 text-yellow-900 hover:bg-yellow-500/20 text-sm px-6" data-testid="explore-cta">
-                      Esplora
+                    <Button size="sm" className="rounded-full bg-gray-900 text-white hover:bg-gray-800 text-xs h-8 px-4" data-testid="daily-item-cta">
+                      <ArrowLeftRight className="w-3 h-3 mr-1" /> Dettagli
                     </Button>
                   </Link>
                 </div>
               </>
             ) : (
-              <div className="space-y-3">
-                <div className="h-8 w-64 bg-yellow-500/30 rounded-lg animate-pulse" />
-                <div className="h-4 w-48 bg-yellow-500/20 rounded animate-pulse" />
+              <div className="space-y-2">
+                <div className="h-6 w-48 bg-yellow-500/30 rounded-lg animate-pulse" />
+                <div className="h-4 w-32 bg-yellow-500/20 rounded animate-pulse" />
               </div>
             )}
           </div>
-          {/* Daily item image + Mascot */}
-          <div className="flex-shrink-0 flex flex-col items-center gap-3">
+          {/* Daily item image + Mascot - RIDOTTO */}
+          <div className="flex-shrink-0 flex items-center gap-2">
             {dailyItem?.images?.[0] && (
-              <Link to={`/oggetto/${dailyItem.item_id}`} className="w-36 h-36 sm:w-44 sm:h-44 rounded-2xl overflow-hidden border-4 border-yellow-300 shadow-lg block hover:border-yellow-200 transition-colors" data-testid="daily-item-image-link">
+              <Link to={`/oggetto/${dailyItem.item_id}`} className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden border-2 border-yellow-300 shadow-lg block hover:scale-105 transition-transform" data-testid="daily-item-image-link">
                 <img src={dailyItem.images[0]} alt={dailyItem?.name} className="w-full h-full object-cover" />
               </Link>
             )}
-            <div className="flex items-center gap-2">
-              <YellowPecoraMascot className="w-10 h-10 drop-shadow" />
-              <span className="text-xs font-bold text-yellow-700 bg-white rounded-full px-2.5 py-1 shadow-sm">Yellow Pecora</span>
-            </div>
+            <YellowPecoraMascot className="w-8 h-8 sm:w-10 sm:h-10 drop-shadow" />
           </div>
           {/* Background pattern */}
-          <div className="absolute inset-0 opacity-10">
-            <div className="absolute top-4 right-20 w-32 h-32 border-2 border-yellow-800 rounded-full" />
-            <div className="absolute bottom-8 left-10 w-20 h-20 border-2 border-yellow-800 rounded-full" />
+          <div className="absolute inset-0 opacity-5">
+            <div className="absolute top-2 right-16 w-20 h-20 border-2 border-yellow-800 rounded-full" />
+            <div className="absolute bottom-4 left-6 w-12 h-12 border-2 border-yellow-800 rounded-full" />
           </div>
         </div>
       </section>

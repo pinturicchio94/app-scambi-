@@ -4,7 +4,7 @@ import { CATEGORIES, CONDITIONS } from "@/data/mockData";
 import {
   Upload, Sparkles, Check, ChevronRight, ChevronLeft,
   Image as ImageIcon, X, Plus, Loader2, PenLine, Users, BarChart3,
-  AlertTriangle, GripVertical, Eye, EyeOff, Lock, Globe, Package
+  AlertTriangle, GripVertical, Eye, EyeOff, Lock, Globe, Package, Box, MapPin
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +49,12 @@ export default function UploadModal({ open, onOpenChange, onItemCreated, default
   const [collectionPercentage, setCollectionPercentage] = useState("");
   const [autoCalculatePercentage, setAutoCalculatePercentage] = useState(true);
   
+  // NEW: Sealed and Purchase Info
+  const [isSealed, setIsSealed] = useState(false);
+  const [purchaseStore, setPurchaseStore] = useState("");
+  const [purchaseDate, setPurchaseDate] = useState("");
+  const [purchasePrice, setPurchasePrice] = useState("");
+  
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [seekersCount, setSeekersCount] = useState(0);
@@ -63,6 +69,7 @@ export default function UploadModal({ open, onOpenChange, onItemCreated, default
     setNotes(""); setCollectionPercentage(""); setAutoCalculatePercentage(true);
     setVisibility("private"); setSubmitting(false); setDone(false); setSeekersCount(0);
     setShowAdvanced(false);
+    setIsSealed(false); setPurchaseStore(""); setPurchaseDate(""); setPurchasePrice("");
   }, []);
 
   const uploadSingleFile = async (file) => {
@@ -191,6 +198,11 @@ export default function UploadModal({ open, onOpenChange, onItemCreated, default
         auto_calculate_percentage: autoCalculatePercentage,
         profile_section: "collezione", // Always starts in collection
         visibility: visibility, // Default private
+        // NEW: Sealed and Purchase Info
+        sealed: isSealed,
+        purchase_store: purchaseStore,
+        purchase_date: purchaseDate,
+        purchase_price: purchasePrice ? parseFloat(purchasePrice) : null,
       };
       
       const res = await axios.post(`${API}/items`, payload, { withCredentials: true });
@@ -446,6 +458,62 @@ export default function UploadModal({ open, onOpenChange, onItemCreated, default
                   checked={visibility === "public"} 
                   onCheckedChange={(checked) => setVisibility(checked ? "public" : "private")}
                   data-testid="visibility-toggle"
+                />
+              </div>
+            </div>
+
+            {/* Sealed Status Toggle */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Box className="w-4 h-4 text-blue-600" />
+                  <div>
+                    <label className="text-sm font-medium text-blue-900 cursor-pointer">
+                      Oggetto Sigillato (Box Sealed)
+                    </label>
+                    <p className="text-[10px] text-blue-600">
+                      Ancora nella confezione originale sigillata
+                    </p>
+                  </div>
+                </div>
+                <Switch 
+                  checked={isSealed} 
+                  onCheckedChange={setIsSealed}
+                  data-testid="sealed-toggle"
+                />
+              </div>
+            </div>
+
+            {/* Purchase Info */}
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-2">
+              <div className="flex items-center gap-2 mb-2">
+                <MapPin className="w-4 h-4 text-gray-600" />
+                <h4 className="text-xs font-semibold text-gray-900 uppercase tracking-wider">Dettagli Acquisto (Opzionale)</h4>
+              </div>
+              <Input 
+                placeholder="Dove l'hai comprato? (es. Amazon, GameStop, Fiera...)"
+                value={purchaseStore}
+                onChange={(e) => setPurchaseStore(e.target.value)}
+                className="text-sm h-9"
+                data-testid="purchase-store-input"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <Input 
+                  type="date"
+                  value={purchaseDate}
+                  onChange={(e) => setPurchaseDate(e.target.value)}
+                  className="text-sm h-9"
+                  data-testid="purchase-date-input"
+                  placeholder="Data acquisto"
+                />
+                <Input 
+                  type="number"
+                  step="0.01"
+                  placeholder="Prezzo pagato (€)"
+                  value={purchasePrice}
+                  onChange={(e) => setPurchasePrice(e.target.value)}
+                  className="text-sm h-9"
+                  data-testid="purchase-price-input"
                 />
               </div>
             </div>

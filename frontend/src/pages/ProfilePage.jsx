@@ -257,7 +257,7 @@ export default function ProfilePage() {
   const [wishlistItems, setWishlistItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [ratingOpen, setRatingOpen] = useState(false);
-  const defaultTab = searchParams.get("tab") || "collezione_privata";
+  const defaultTab = searchParams.get("tab") || "scambiabili";
   const isOwner = currentUser && currentUser.user_id === userId;
 
   const fetchProfile = useCallback(async () => {
@@ -348,8 +348,17 @@ export default function ProfilePage() {
       {/* Tabs */}
       <Tabs defaultValue={defaultTab} className="w-full mt-6" data-testid="profile-tabs">
         <TabsList className="w-full justify-start bg-transparent border-b border-gray-100 rounded-none h-auto p-0 gap-0 overflow-x-auto flex-nowrap">
+          {isOwner && (
+            <Link 
+              to="/collezioni" 
+              className="rounded-none border-b-2 border-transparent hover:border-purple-400 px-3 py-2.5 text-xs sm:text-sm font-medium whitespace-nowrap text-gray-600 hover:text-purple-700 transition-colors flex items-center gap-1.5"
+              data-testid="link-collections"
+            >
+              <Package className="w-3.5 h-3.5" />
+              Le Mie Collezioni
+            </Link>
+          )}
           {[
-            { value: "collezione_privata", label: "Collezione Privata" },
             { value: "scambiabili", label: "Scambiabili" },
             { value: "vendita", label: "In Vendita" },
             { value: "desideri", label: "Lista Desideri" },
@@ -362,36 +371,6 @@ export default function ProfilePage() {
             >{tab.label}</TabsTrigger>
           ))}
         </TabsList>
-
-        {/* Collezione Privata */}
-        <TabsContent value="collezione_privata" className="pt-6" data-testid="tab-content-collezione-privata">
-          {collections.length > 0 && (
-            <div className="space-y-3 mb-6">
-              <h3 className="text-xs uppercase tracking-wider text-gray-500 font-semibold">Collezioni</h3>
-              {collections.map(coll => <CollectionRow key={coll.collection_id} coll={coll} isOwner={isOwner} />)}
-            </div>
-          )}
-          {privateItems.length > 0 || items.filter(i => !i.profile_section || i.profile_section === "collezione_privata").length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {(privateItems.length > 0 ? privateItems : items.slice(0, 6)).map(item => (
-                <div key={item.item_id} className="relative">
-                  <ItemCard item={item} />
-                  {isOwner && (
-                    <button onClick={() => toggleVisibility(item.item_id, item.visibility)}
-                      className="absolute top-3 left-3 z-10 w-7 h-7 rounded-full bg-white/80 backdrop-blur flex items-center justify-center shadow-sm"
-                      title={item.visibility === "private" ? "Rendi visibile" : "Nascondi"}
-                      data-testid={`toggle-visibility-${item.item_id}`}
-                    >
-                      {item.visibility === "private" ? <EyeOff className="w-3.5 h-3.5 text-gray-500" /> : <Eye className="w-3.5 h-3.5 text-gray-500" />}
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-400 text-center py-8">Nessun oggetto nella collezione privata</p>
-          )}
-        </TabsContent>
 
         {/* Scambiabili */}
         <TabsContent value="scambiabili" className="pt-6">
