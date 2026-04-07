@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import YellowPecoraMascot from "@/components/YellowPecoraMascot";
-import { Plus, User, LogOut, Package, Heart, Home, Bell, MessageCircle, Shield } from "lucide-react";
+import { Plus, User, LogOut, Package, Heart, Home, Bell, MessageCircle, Shield, Menu, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -9,6 +9,9 @@ import {
   DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger
+} from "@/components/ui/sheet";
 
 export default function Navbar({ onUploadClick, onLoginClick, onChatClick, onLogout, notifications = [], onNotificationsClear }) {
   const { user } = useAuth();
@@ -26,11 +29,43 @@ export default function Navbar({ onUploadClick, onLoginClick, onChatClick, onLog
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-14 gap-3">
-          {/* Left: Home + Logo text */}
+          {/* Left: Home + Mobile Menu + Desktop Links */}
           <div className="flex items-center gap-2 flex-shrink-0">
             <Link to="/" className="p-1.5 rounded-full hover:bg-gray-100 transition-colors" data-testid="home-button" title="Home">
               <Home className="w-5 h-5 text-gray-600" />
             </Link>
+
+            {/* Mobile Menu (Hamburger) - Visible only on mobile */}
+            <Sheet>
+              <SheetTrigger asChild>
+                <button className="md:hidden p-1.5 rounded-full hover:bg-gray-100 transition-colors" data-testid="mobile-menu-trigger">
+                  <Menu className="w-5 h-5 text-gray-600" />
+                </button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-64">
+                <SheetHeader>
+                  <SheetTitle className="font-heading text-left">Menu</SheetTitle>
+                </SheetHeader>
+                <div className="flex flex-col gap-1 mt-6">
+                  <Link to="/esplora" className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition-colors" data-testid="mobile-nav-explore">
+                    <Search className="w-5 h-5 text-gray-600" />
+                    <span className="text-sm font-medium text-gray-700">Esplora</span>
+                  </Link>
+                  {user && (
+                    <Link to="/collezioni" className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition-colors" data-testid="mobile-nav-collections">
+                      <Package className="w-5 h-5 text-gray-600" />
+                      <span className="text-sm font-medium text-gray-700">Le Mie Collezioni</span>
+                    </Link>
+                  )}
+                  <Link to="/tribunale" className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition-colors" data-testid="mobile-nav-tribunale">
+                    <Shield className="w-5 h-5 text-gray-600" />
+                    <span className="text-sm font-medium text-gray-700">L'Oracolo</span>
+                  </Link>
+                </div>
+              </SheetContent>
+            </Sheet>
+
+            {/* Desktop Links - Hidden on mobile */}
             <Link to="/esplora" className="hidden md:block text-sm text-gray-500 hover:text-gray-900 transition-colors" data-testid="nav-explore">
               Esplora
             </Link>
