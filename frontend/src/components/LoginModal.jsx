@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Mail, Lock, User, Fingerprint } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -13,6 +14,16 @@ export default function LoginModal({ open, onOpenChange }) {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [rememberEmail, setRememberEmail] = useState(false);
+
+  // Load saved email from localStorage on mount
+  useEffect(() => {
+    const savedEmail = localStorage.getItem("rememberedEmail");
+    if (savedEmail) {
+      setEmail(savedEmail);
+      setRememberEmail(true);
+    }
+  }, []);
 
   const handleLogin = async () => {
     setError(""); setLoading(true);
@@ -95,6 +106,23 @@ export default function LoginModal({ open, onOpenChange }) {
                 className="pl-10 rounded-full" data-testid="login-password-input"
                 onKeyDown={(e) => e.key === "Enter" && handleLogin()} />
             </div>
+            
+            {/* Remember Email Checkbox */}
+            <div className="flex items-center space-x-2 px-1">
+              <Checkbox 
+                id="remember-email" 
+                checked={rememberEmail} 
+                onCheckedChange={setRememberEmail}
+                data-testid="remember-email-checkbox"
+              />
+              <label 
+                htmlFor="remember-email" 
+                className="text-xs text-gray-600 cursor-pointer select-none"
+              >
+                Ricorda la mia email per un accesso più rapido
+              </label>
+            </div>
+            
             {error && <p className="text-xs text-red-500 text-center" data-testid="login-error">{error}</p>}
             <Button onClick={handleLogin} disabled={loading || !email || !password}
               className="w-full rounded-full bg-gray-900 text-white h-11" data-testid="login-submit-btn"
