@@ -229,17 +229,41 @@ async def login_email(request: Request):
     if not user:
         raise HTTPException(status_code=401, detail="Email o password non validi")
     
-    # Verify password with bcrypt
+    # Hybrid password verification (supports both bcrypt and legacy SHA256)
+    password_hash = user.get("password_hash", "")
+    is_valid = False
+    should_upgrade = False
+    
     try:
-        password_hash = user.get("password_hash", "")
-        if isinstance(password_hash, str):
-            password_hash = password_hash.encode('utf-8')
+        # Check if it's a bcrypt hash (starts with $2b$ or $2a$)
+        if password_hash.startswith(('$2b$', '$2a$', '$2y$')):
+            # Use bcrypt verification
+            if isinstance(password_hash, str):
+                password_hash = password_hash.encode('utf-8')
+            is_valid = bcrypt.checkpw(password.encode('utf-8'), password_hash)
+        else:
+            # Legacy SHA256 verification
+            sha256_hash = hashlib.sha256(password.encode()).hexdigest()
+            is_valid = (password_hash == sha256_hash)
+            should_upgrade = is_valid  # Upgrade to bcrypt if login succeeds
         
-        is_valid = bcrypt.checkpw(password.encode('utf-8'), password_hash)
         if not is_valid:
             raise HTTPException(status_code=401, detail="Email o password non validi")
+        
+        # Optional: Upgrade SHA256 users to bcrypt on successful login
+        if should_upgrade:
+            logger.info(f"🔄 Upgrading user {email} from SHA256 to bcrypt")
+            salt = bcrypt.gensalt()
+            new_hash = bcrypt.hashpw(password.encode('utf-8'), salt)
+            await db.users.update_one(
+                {"email": email},
+                {"$set": {"password_hash": new_hash.decode('utf-8')}}
+            )
+            
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Password verification error: {e}")
+        logger.error(f"Password verification error for {email}: {e}")
         raise HTTPException(status_code=401, detail="Email o password non validi")
     user_id = user["user_id"]
     session_token = f"sess_{uuid.uuid4().hex}"
@@ -1445,8 +1469,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_origins=[
         "http://localhost:3000",
-        "https://apri-project.preview.emergentagent.com",
-        os.environ.get('CORS_ORIGINS', '')
+        "https://apri-project.preview.emergentagent.com"
     ],
     allow_methods=["*"],
     allow_headers=["*"],
