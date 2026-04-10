@@ -10,6 +10,7 @@ import base64
 import json
 import hashlib
 import requests
+import bcrypt
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
@@ -222,9 +223,23 @@ async def login_email(request: Request):
     password = body.get("password", "")
     if not email or not password:
         raise HTTPException(status_code=400, detail="Email e password richiesti")
-    pw_hash = hashlib.sha256(password.encode()).hexdigest()
-    user = await db.users.find_one({"email": email, "password_hash": pw_hash})
+    
+    # Find user by email
+    user = await db.users.find_one({"email": email})
     if not user:
+        raise HTTPException(status_code=401, detail="Email o password non validi")
+    
+    # Verify password with bcrypt
+    try:
+        password_hash = user.get("password_hash", "")
+        if isinstance(password_hash, str):
+            password_hash = password_hash.encode('utf-8')
+        
+        is_valid = bcrypt.checkpw(password.encode('utf-8'), password_hash)
+        if not is_valid:
+            raise HTTPException(status_code=401, detail="Email o password non validi")
+    except Exception as e:
+        logger.error(f"Password verification error: {e}")
         raise HTTPException(status_code=401, detail="Email o password non validi")
     user_id = user["user_id"]
     session_token = f"sess_{uuid.uuid4().hex}"
@@ -1428,7 +1443,11 @@ app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=[
+        "http://localhost:3000",
+        "https://apri-project.preview.emergentagent.com",
+        os.environ.get('CORS_ORIGINS', '')
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
