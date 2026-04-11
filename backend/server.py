@@ -834,6 +834,63 @@ async def mark_notifications_read(request: Request):
     )
     return {"message": "Tutte le notifiche segnate come lette"}
 
+
+# --- Get User Collections with Items Grouped ---
+@api_router.get("/collections/grouped")
+async def get_user_collections_grouped(request: Request):
+    """Get user's items grouped by collection_name with stats"""
+    try:
+        user = await get_current_user(request)
+        
+        logger.info(f"🔍 [Collections] User requesting: {user.get('user_id')} ({user.get('name')})")
+        
+        # Fetch all user's collection items
+        query = {"owner_id": user["user_id"]}
+        logger.info(f"🔍 [Collections] Query: {query}")
+        
+        items = await db.items.find(query, {"_id": 0}).to_list(1000)
+        
+        logger.info(f"📦 [Collections] Found {len(items)} items for user {user.get('user_id')}")
+        
+        # Group by collection_name
+        collections_dict = {}
+        for item in items:
+            coll_name = item.get("collection_name") or "Senza Collezione"
+            if coll_name not in collections_dict:
+                collections_dict[coll_name] = {
+                    "collection_name": coll_name,
+                    "items": [],
+                    "total_value": 0,
+                    "sealed_count": 0,
+                    "percentage": item.get("collection_percentage", 0)
+                }
+            collections_dict[coll_name]["items"].append(item)
+            if item.get("estimated_value"):
+                collections_dict[coll_name]["total_value"] += item.get("estimated_value", 0)
+            if item.get("sealed"):
+                collections_dict[coll_name]["sealed_count"] += 1
+        
+        # Convert to list and add item count
+        collections = []
+        for coll_name, coll_data in collections_dict.items():
+            coll_data["item_count"] = len(coll_data["items"])
+            collections.append(coll_data)
+        
+        # Sort by item count desc
+        collections.sort(key=lambda x: x["item_count"], reverse=True)
+        
+        logger.info(f"✅ [Collections] Returning {len(collections)} collections with {len(items)} total items")
+        
+        return collections
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [Collections] Error: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
+
 # --- Collection Endpoints ---
 @api_router.get("/collections/{user_id}")
 async def get_user_collections(user_id: str):
@@ -895,61 +952,6 @@ async def update_collection(request: Request, collection_id: str):
     updated = await db.collections.find_one({"collection_id": collection_id}, {"_id": 0})
     return updated
 
-# --- Get User Collections with Items Grouped ---
-@api_router.get("/collections/grouped")
-async def get_user_collections_grouped(request: Request):
-    """Get user's items grouped by collection_name with stats"""
-    try:
-        user = await get_current_user(request)
-        
-        logger.info(f"🔍 [Collections] User requesting: {user.get('user_id')} ({user.get('name')})")
-        
-        # Fetch all user's collection items
-        query = {"owner_id": user["user_id"]}
-        logger.info(f"🔍 [Collections] Query: {query}")
-        
-        items = await db.items.find(query, {"_id": 0}).to_list(1000)
-        
-        logger.info(f"📦 [Collections] Found {len(items)} items for user {user.get('user_id')}")
-        
-        # Group by collection_name
-        collections_dict = {}
-        for item in items:
-            coll_name = item.get("collection_name") or "Senza Collezione"
-            if coll_name not in collections_dict:
-                collections_dict[coll_name] = {
-                    "collection_name": coll_name,
-                    "items": [],
-                    "total_value": 0,
-                    "sealed_count": 0,
-                    "percentage": item.get("collection_percentage", 0)
-                }
-            collections_dict[coll_name]["items"].append(item)
-            if item.get("estimated_value"):
-                collections_dict[coll_name]["total_value"] += item.get("estimated_value", 0)
-            if item.get("sealed"):
-                collections_dict[coll_name]["sealed_count"] += 1
-        
-        # Convert to list and add item count
-        collections = []
-        for coll_name, coll_data in collections_dict.items():
-            coll_data["item_count"] = len(coll_data["items"])
-            collections.append(coll_data)
-        
-        # Sort by item count desc
-        collections.sort(key=lambda x: x["item_count"], reverse=True)
-        
-        logger.info(f"✅ [Collections] Returning {len(collections)} collections with {len(items)} total items")
-        
-        return collections
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ [Collections] Error: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return []
 
 # --- Match/Seekers Count Endpoint ---
 @api_router.get("/items/{item_id}/seekers")
