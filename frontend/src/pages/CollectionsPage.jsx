@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { Package, Loader2 } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Package, Search, ChevronRight, Grid3x3, FolderOpen } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import axios from "axios";
 
@@ -11,7 +11,14 @@ export default function CollectionsPage() {
   const { user } = useAuth();
   const [allItems, setAllItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  
+  // UI State
+  const [viewMode, setViewMode] = useState("categoria"); // "categoria" or "serie"
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedFolder, setSelectedFolder] = useState(null);
+  const [activeFilters, setActiveFilters] = useState({
+    tipo: "tutti", // tutti, vendita, scambio, collezione
+  });
 
   useEffect(() => {
     if (user) {
@@ -19,21 +26,13 @@ export default function CollectionsPage() {
     }
   }, [user]);
 
-  // STEP 2: Query PULITA - Fetch TUTTI gli items dell'utente
   const fetchAllUserItems = async () => {
     try {
       setLoading(true);
-      setError(null);
-      
-      console.log("🔍 Fetching collections for user:", user.user_id);
-      
       const res = await axios.get(`${API}/collections/grouped`, { 
         withCredentials: true 
       });
       
-      console.log("📦 API Response:", res.data);
-      
-      // Flatten all items from all collections
       const items = [];
       res.data.forEach(collection => {
         if (collection.items && Array.isArray(collection.items)) {
@@ -41,261 +40,345 @@ export default function CollectionsPage() {
         }
       });
       
-      console.log(`✅ Total items fetched: ${items.length}`);
       setAllItems(items);
-      
     } catch (err) {
-      console.error("❌ Error fetching collections:", err);
-      setError(err.response?.data?.detail || "Errore nel caricamento");
+      console.error("Error fetching collections:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  // STEP 3: Raggruppamento per tipo transazione
-  const groupByTransactionType = () => {
-    const groups = {
-      collezione: [],
-      scambio: [],
-      vendita: [],
-      scambio_vendita: [],
-      other: []
-    };
+  // Filter and search
+  const filteredItems = useMemo(() => {
+    let filtered = allItems;
 
-    allItems.forEach(item => {
-      const type = item.transaction_type || 'other';
-      if (groups[type]) {
-        groups[type].push(item);
-      } else {
-        groups.other.push(item);
+    // Filter by tipo
+    if (activeFilters.tipo !== "tutti") {
+      filtered = filtered.filter(item => {
+        const type = item.transaction_type || "";
+        if (activeFilters.tipo === "vendita") return type === "vendita" || type === "scambio_vendita";
+        if (activeFilters.tipo === "scambio") return type === "scambio" || type === "scambio_vendita";
+        if (activeFilters.tipo === "collezione") return type === "collezione";
+        return true;
+      });
+    }
+
+    // Search
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(item => 
+        item.name?.toLowerCase().includes(query) ||
+        item.category?.toLowerCase().includes(query) ||
+        item.series?.toLowerCase().includes(query)
+      );
+    }
+
+    return filtered;
+  }, [allItems, searchQuery, activeFilters]);
+
+  // Group by categoria or serie
+  const folders = useMemo(() => {
+    const grouped = {};
+    
+    filteredItems.forEach(item => {
+      const key = viewMode === "categoria" 
+        ? item.category || "Altro"
+        : item.series || "Altro";
+      
+      if (!grouped[key]) {
+        grouped[key] = {
+          name: key,
+          items: [],
+          coverImage: null
+        };
+      }
+      
+      grouped[key].items.push(item);
+      
+      // Set cover image (first item with image)
+      if (!grouped[key].coverImage && item.images && item.images[0]) {
+        grouped[key].coverImage = item.images[0];
       }
     });
 
-    return groups;
-  };
-
-  const groups = groupByTransactionType();
+    return Object.values(grouped).sort((a, b) => b.items.length - a.items.length);
+  }, [filteredItems, viewMode]);
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">Devi effettuare il login per vedere le tue collezioni</p>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <p className="text-gray-500 text-sm">Devi effettuare il login</p>
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-500 mb-2">❌ {error}</p>
-          <button 
-            onClick={fetchAllUserItems}
-            className="text-purple-600 hover:underline"
-          >
-            Riprova
-          </button>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-6 h-6 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50">
+      {/* Mobile Container */}
+      <div className="w-full max-w-md mx-auto pb-20">
         
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-heading font-bold text-gray-900 mb-2">
-            Le Mie Collezioni
-          </h1>
-          <p className="text-gray-600">
-            {allItems.length} oggetti totali
-          </p>
-        </div>
-
-        {/* Debug Info (rimuovere dopo verifica) */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <p className="text-sm text-blue-800 font-semibold mb-2">🔍 Debug Info:</p>
-          <ul className="text-xs text-blue-700 space-y-1">
-            <li>User ID: {user.user_id}</li>
-            <li>Total Items: {allItems.length}</li>
-            <li>Collezione Privata: {groups.collezione.length}</li>
-            <li>Scambio: {groups.scambio.length}</li>
-            <li>Vendita: {groups.vendita.length}</li>
-            <li>Scambio/Vendita: {groups.scambio_vendita.length}</li>
-          </ul>
-        </div>
-
-        {/* STEP 3: Tabs per Raggruppamento */}
-        {allItems.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-            <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500 text-lg mb-2">Nessun oggetto nella collezione</p>
-            <p className="text-gray-400 text-sm">Carica il tuo primo oggetto per iniziare!</p>
+        <div className="bg-white border-b border-gray-200">
+          <div className="px-4 pt-4 pb-3">
+            <h1 className="text-2xl font-heading font-bold text-gray-900 mb-3">
+              Le Mie Collezioni
+            </h1>
+            
+            {/* Toggle: Categoria / Serie */}
+            <div className="flex items-center gap-1 bg-gray-100 rounded-full p-1">
+              <button
+                onClick={() => { setViewMode("categoria"); setSelectedFolder(null); }}
+                className={`flex-1 text-xs font-semibold py-2 rounded-full transition-all duration-150 ${
+                  viewMode === "categoria" 
+                    ? "bg-white shadow-sm text-gray-900" 
+                    : "text-gray-500"
+                }`}
+                data-testid="toggle-categoria"
+              >
+                Per Categoria
+              </button>
+              <button
+                onClick={() => { setViewMode("serie"); setSelectedFolder(null); }}
+                className={`flex-1 text-xs font-semibold py-2 rounded-full transition-all duration-150 ${
+                  viewMode === "serie" 
+                    ? "bg-white shadow-sm text-gray-900" 
+                    : "text-gray-500"
+                }`}
+                data-testid="toggle-serie"
+              >
+                Per Serie
+              </button>
+            </div>
           </div>
-        ) : (
-          <Tabs defaultValue="all" className="w-full">
-            <TabsList className="mb-6">
-              <TabsTrigger value="all">
-                Tutti ({allItems.length})
-              </TabsTrigger>
-              <TabsTrigger value="collezione">
-                Collezione Privata ({groups.collezione.length})
-              </TabsTrigger>
-              <TabsTrigger value="scambio">
-                Scambio ({groups.scambio.length})
-              </TabsTrigger>
-              <TabsTrigger value="vendita">
-                Vendita ({groups.vendita.length})
-              </TabsTrigger>
-              <TabsTrigger value="scambio_vendita">
-                Scambio/Vendita ({groups.scambio_vendita.length})
-              </TabsTrigger>
-            </TabsList>
 
-            {/* Tab: TUTTI */}
-            <TabsContent value="all">
-              <ItemGrid items={allItems} />
-            </TabsContent>
+          {/* Search Bar */}
+          <div className="px-4 pb-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Cerca oggetti..."
+                className="h-10 pl-10 rounded-xl bg-white border-gray-200 text-sm"
+                data-testid="search-input"
+              />
+            </div>
+          </div>
 
-            {/* Tab: COLLEZIONE PRIVATA */}
-            <TabsContent value="collezione">
-              <ItemGrid items={groups.collezione} emptyMessage="Nessun oggetto in collezione privata" />
-            </TabsContent>
+          {/* Quick Filters */}
+          <div className="px-4 pb-3 overflow-x-auto hide-scrollbar">
+            <div className="flex gap-2">
+              {["tutti", "vendita", "scambio", "collezione"].map(tipo => (
+                <button
+                  key={tipo}
+                  onClick={() => setActiveFilters({ ...activeFilters, tipo })}
+                  className={`flex-shrink-0 text-xs px-3 py-1.5 rounded-full border transition-all duration-150 active:scale-95 ${
+                    activeFilters.tipo === tipo
+                      ? "bg-yellow-400 border-yellow-400 text-gray-900 font-semibold"
+                      : "bg-white border-gray-200 text-gray-600"
+                  }`}
+                  data-testid={`filter-${tipo}`}
+                >
+                  {tipo.charAt(0).toUpperCase() + tipo.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
 
-            {/* Tab: SCAMBIO */}
-            <TabsContent value="scambio">
-              <ItemGrid items={groups.scambio} emptyMessage="Nessun oggetto per scambio" />
-            </TabsContent>
-
-            {/* Tab: VENDITA */}
-            <TabsContent value="vendita">
-              <ItemGrid items={groups.vendita} emptyMessage="Nessun oggetto in vendita" />
-            </TabsContent>
-
-            {/* Tab: SCAMBIO/VENDITA */}
-            <TabsContent value="scambio_vendita">
-              <ItemGrid items={groups.scambio_vendita} emptyMessage="Nessun oggetto scambio/vendita" />
-            </TabsContent>
-          </Tabs>
-        )}
+        {/* Content */}
+        <div className="p-4">
+          {selectedFolder ? (
+            <FolderView 
+              folder={selectedFolder} 
+              onBack={() => setSelectedFolder(null)} 
+            />
+          ) : (
+            <FoldersGrid 
+              folders={folders} 
+              onSelectFolder={setSelectedFolder}
+              totalItems={filteredItems.length}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-// Simple Item Grid Component
-function ItemGrid({ items, emptyMessage }) {
-  if (items.length === 0) {
+// Folders Grid
+function FoldersGrid({ folders, onSelectFolder, totalItems }) {
+  if (folders.length === 0) {
     return (
-      <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
+      <div className="text-center py-12">
         <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-        <p className="text-gray-500">{emptyMessage || "Nessun oggetto"}</p>
+        <p className="text-gray-500 text-sm">Nessun oggetto trovato</p>
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-      {items.map((item) => (
-        <ItemCard key={item.item_id} item={item} />
-      ))}
+    <div>
+      <p className="text-xs text-gray-500 mb-4">
+        {totalItems} oggetti • {folders.length} {folders.length === 1 ? 'gruppo' : 'gruppi'}
+      </p>
+      
+      <div className="grid grid-cols-2 gap-3">
+        {folders.map((folder, idx) => (
+          <FolderCard 
+            key={idx} 
+            folder={folder} 
+            onClick={() => onSelectFolder(folder)} 
+          />
+        ))}
+      </div>
     </div>
   );
 }
 
-// Simple Item Card
-function ItemCard({ item }) {
-  const getBadgeColor = (type) => {
-    switch (type) {
-      case 'collezione':
-        return 'bg-gray-100 text-gray-700';
-      case 'scambio':
-        return 'bg-blue-100 text-blue-700';
-      case 'vendita':
-        return 'bg-green-100 text-green-700';
-      case 'scambio_vendita':
-        return 'bg-orange-100 text-orange-700';
-      default:
-        return 'bg-gray-100 text-gray-500';
-    }
-  };
-
-  const getTransactionLabel = (type) => {
-    switch (type) {
-      case 'collezione':
-        return 'Solo Collezione';
-      case 'scambio':
-        return 'Scambio';
-      case 'vendita':
-        return 'Vendita';
-      case 'scambio_vendita':
-        return 'Scambio/Vendita';
-      default:
-        return type;
-    }
-  };
-
+// Folder Card
+function FolderCard({ folder, onClick }) {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow">
-      {/* Image */}
-      <div className="aspect-square bg-gray-100 relative">
-        {item.images && item.images[0] ? (
+    <button
+      onClick={onClick}
+      className="relative aspect-square rounded-xl overflow-hidden bg-white border border-gray-200 transition-all duration-150 active:scale-95 hover:shadow-md group"
+      data-testid={`folder-${folder.name}`}
+    >
+      {/* Stacked effect */}
+      <div className="absolute inset-0 bg-gray-100 translate-x-1 translate-y-1 rounded-xl" />
+      <div className="absolute inset-0 bg-gray-50 translate-x-0.5 translate-y-0.5 rounded-xl" />
+      
+      {/* Cover Image */}
+      <div className="relative h-full w-full">
+        {folder.coverImage ? (
           <img 
-            src={item.images[0]} 
-            alt={item.name}
+            src={folder.coverImage} 
+            alt={folder.name}
             className="w-full h-full object-cover"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Package className="w-12 h-12 text-gray-300" />
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
+            <FolderOpen className="w-12 h-12 text-gray-400" />
           </div>
         )}
         
-        {/* Badge */}
-        <div className="absolute top-2 right-2">
-          <Badge className={`${getBadgeColor(item.transaction_type)} text-xs`}>
-            {getTransactionLabel(item.transaction_type)}
-          </Badge>
+        {/* Overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+        
+        {/* Label */}
+        <div className="absolute bottom-0 left-0 right-0 p-3">
+          <h3 className="font-semibold text-white text-sm mb-0.5 line-clamp-1">
+            {folder.name}
+          </h3>
+          <p className="text-xs text-white/80">
+            {folder.items.length} {folder.items.length === 1 ? 'oggetto' : 'oggetti'}
+          </p>
         </div>
 
-        {/* Visibility Badge */}
-        {item.visibility === 'private' && (
-          <div className="absolute top-2 left-2">
-            <Badge className="bg-purple-100 text-purple-700 text-xs">
-              🔒 Privato
-            </Badge>
-          </div>
-        )}
+        {/* Arrow */}
+        <div className="absolute top-2 right-2 w-6 h-6 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
+          <ChevronRight className="w-4 h-4 text-white" />
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// Folder View (inside a folder)
+function FolderView({ folder, onBack }) {
+  return (
+    <div>
+      {/* Back Button */}
+      <button
+        onClick={onBack}
+        className="flex items-center gap-2 mb-4 text-sm text-gray-600 active:scale-95 transition-transform duration-150"
+        data-testid="back-button"
+      >
+        <ChevronRight className="w-4 h-4 rotate-180" />
+        <span>Indietro</span>
+      </button>
+
+      {/* Folder Title */}
+      <div className="mb-4">
+        <h2 className="text-xl font-heading font-bold text-gray-900 mb-1">
+          {folder.name}
+        </h2>
+        <p className="text-xs text-gray-500">
+          {folder.items.length} {folder.items.length === 1 ? 'oggetto' : 'oggetti'}
+        </p>
       </div>
 
-      {/* Info */}
-      <div className="p-4">
-        <h3 className="font-semibold text-gray-900 mb-1 line-clamp-1">
-          {item.name}
-        </h3>
-        <p className="text-xs text-gray-500 mb-2">
-          {item.category} {item.subcategory ? `• ${item.subcategory}` : ''}
-        </p>
-        
-        {item.estimated_value && (
-          <p className="text-sm font-semibold text-purple-600">
-            €{item.estimated_value.toFixed(2)}
-          </p>
-        )}
+      {/* Items Grid */}
+      <div className="grid grid-cols-3 gap-2">
+        {folder.items.map((item, idx) => (
+          <ItemCard key={idx} item={item} />
+        ))}
+      </div>
+    </div>
+  );
+}
 
-        {/* Debug: Show collection_name */}
-        <p className="text-xs text-gray-400 mt-2 truncate">
-          📁 {item.collection_name || 'Nessuna collezione'}
+// Item Card
+function ItemCard({ item }) {
+  const getBadgeStyle = (type) => {
+    switch (type) {
+      case 'vendita':
+      case 'scambio_vendita':
+        return 'bg-green-500 text-white';
+      case 'scambio':
+        return 'bg-blue-500 text-white';
+      case 'collezione':
+        return 'bg-orange-500 text-white';
+      default:
+        return 'bg-gray-500 text-white';
+    }
+  };
+
+  const getBadgeLabel = (type) => {
+    if (type === 'scambio_vendita') return 'V/S';
+    if (type === 'vendita') return 'V';
+    if (type === 'scambio') return 'S';
+    if (type === 'collezione') return 'C';
+    return '';
+  };
+
+  return (
+    <div 
+      className="relative aspect-[2/3] rounded-lg overflow-hidden bg-white border border-gray-200 transition-all duration-150 active:scale-95"
+      data-testid={`item-${item.item_id}`}
+    >
+      {/* Image */}
+      {item.images && item.images[0] ? (
+        <img 
+          src={item.images[0]} 
+          alt={item.name}
+          className="w-full h-full object-cover"
+        />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center bg-gray-100">
+          <Package className="w-6 h-6 text-gray-300" />
+        </div>
+      )}
+
+      {/* Badge */}
+      {item.transaction_type && (
+        <div className={`absolute top-1 right-1 text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${getBadgeStyle(item.transaction_type)}`}>
+          {getBadgeLabel(item.transaction_type)}
+        </div>
+      )}
+
+      {/* Name overlay (on hover/tap) */}
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 opacity-0 hover:opacity-100 transition-opacity duration-150">
+        <p className="text-white text-[10px] font-semibold line-clamp-2">
+          {item.name}
         </p>
       </div>
     </div>
