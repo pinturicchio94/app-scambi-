@@ -66,6 +66,7 @@ function AppRouter() {
           <Route path="/esplora" element={<ExplorePage />} />
           <Route path="/oggetto/:id" element={<ItemDetailPage />} />
           <Route path="/profilo/:userId" element={<ProfilePage />} />
+          <Route path="/user/:userId" element={<ProfilePage />} />
           <Route path="/tribunale" element={<TribunalePage />} />
           <Route path="/collezioni" element={<CollectionsPage />} />
         </Routes>

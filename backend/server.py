@@ -993,10 +993,28 @@ async def get_user_profile(user_id: str):
         raise HTTPException(status_code=404, detail="Utente non trovato")
     items = await db.items.find({"owner_id": user_id}, {"_id": 0}).to_list(200)
     collections = await db.collections.find({"owner_id": user_id}, {"_id": 0}).to_list(100)
+    
     # Get average rating
     ratings = await db.ratings.find({"rated_user_id": user_id}, {"_id": 0}).to_list(100)
     avg_rating = round(sum(r.get("score", 0) for r in ratings) / len(ratings), 1) if ratings else 0
-    return {**user, "items": items, "collections": collections, "avg_rating": avg_rating, "rating_count": len(ratings), "ratings": ratings[:10]}
+    
+    # Get completed trades count
+    completed_trades = await db.trades.count_documents({
+        "$or": [
+            {"proposer_id": user_id, "status": "accepted"},
+            {"receiver_id": user_id, "status": "accepted"}
+        ]
+    })
+    
+    return {
+        **user, 
+        "items": items, 
+        "collections": collections, 
+        "avg_rating": avg_rating, 
+        "rating_count": len(ratings), 
+        "ratings": ratings[:10],
+        "completed_trades": completed_trades
+    }
 
 # --- Item Visibility Toggle ---
 @api_router.put("/items/{item_id}/visibility")
