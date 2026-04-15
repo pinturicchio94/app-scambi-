@@ -986,6 +986,75 @@ async def get_seekers_count(item_id: str):
     return {"seekers_count": count}
 
 # --- User Profile ---
+@api_router.put("/users/me")
+async def update_my_profile(request: Request):
+    """Update current user's profile"""
+    user = await get_current_user(request)
+    body = await request.json()
+    
+    allowed_fields = ["bio", "age", "city", "instagram", "discord", "youtube"]
+    update_data = {k: v for k, v in body.items() if k in allowed_fields}
+    
+    if update_data:
+        await db.users.update_one(
+            {"user_id": user["user_id"]},
+            {"$set": update_data}
+        )
+    
+    updated_user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "password_hash": 0})
+    return updated_user
+
+@api_router.post("/users/me/avatar")
+async def upload_avatar(request: Request, file: UploadFile = File(...)):
+    """Upload user avatar"""
+    user = await get_current_user(request)
+    
+    # Upload to storage
+    file_content = await file.read()
+    file_name = f"avatars/{user['user_id']}_{int(datetime.now(timezone.utc).timestamp())}.jpg"
+    avatar_url = await upload_to_storage(file_content, file_name)
+    
+    # Update user
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"picture": avatar_url}}
+    )
+    
+    return {"avatar_url": avatar_url}
+
+@api_router.get("/trades/history")
+async def get_trade_history(request: Request):
+    """Get user's completed trades history"""
+    user = await get_current_user(request)
+    
+    # Get accepted trades
+    trades = await db.trades.find({
+        "$or": [
+            {"proposer_id": user["user_id"], "status": "accepted"},
+            {"receiver_id": user["user_id"], "status": "accepted"}
+        ]
+    }, {"_id": 0}).sort("updated_at", -1).to_list(100)
+    
+    # Enrich with item details
+    for trade in trades:
+        # Get proposer items
+        if trade.get("proposer_items"):
+            items = await db.items.find(
+                {"item_id": {"$in": trade["proposer_items"]}},
+                {"_id": 0, "item_id": 1, "name": 1, "images": 1}
+            ).to_list(10)
+            trade["proposer_items_details"] = items
+        
+        # Get receiver items
+        if trade.get("receiver_items"):
+            items = await db.items.find(
+                {"item_id": {"$in": trade["receiver_items"]}},
+                {"_id": 0, "item_id": 1, "name": 1, "images": 1}
+            ).to_list(10)
+            trade["receiver_items_details"] = items
+    
+    return trades
+
 @api_router.get("/users/{user_id}")
 async def get_user_profile(user_id: str):
     user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
@@ -1005,6 +1074,16 @@ async def get_user_profile(user_id: str):
             {"receiver_id": user_id, "status": "accepted"}
         ]
     })
+    
+    # Enrich ratings with rater info
+    for rating in ratings:
+        rater = await db.users.find_one(
+            {"user_id": rating.get("rater_id")},
+            {"_id": 0, "user_id": 1, "name": 1, "picture": 1}
+        )
+        if rater:
+            rating["rater_name"] = rater.get("name")
+            rating["rater_avatar"] = rater.get("picture")
     
     return {
         **user, 
